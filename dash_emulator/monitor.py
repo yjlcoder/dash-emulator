@@ -1,0 +1,2 @@
+class SpeedMonitor(object):
+    pass

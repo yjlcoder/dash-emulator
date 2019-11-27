@@ -1,8 +1,9 @@
-import re
-from urllib.parse import urlparse
 import os.path
-from typing import List, Optional
+import re
 import xml.etree.ElementTree as ET
+from typing import List, Optional
+from urllib.parse import urlparse
+
 from dash_emulator.logger import getLogger
 
 log = getLogger(__name__)
