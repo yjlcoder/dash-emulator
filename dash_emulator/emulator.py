@@ -24,15 +24,16 @@ class Emulator():
             data_previous = self.data_downloaded
             await asyncio.sleep(1)
             diff = self.data_downloaded - data_previous
-            self.speedMonitor.feed(diff, 1)
+            await self.speed_monitor.feed(diff, 1)
+            self.speed_monitor.print()
 
     def __init__(self, args):
         self.args = args  # type: Dict[str, str]
         self.config = config.Config(args)
         self.mpd = None  # type: Optional[mpd.MPD]
 
-        self.speedMonitor = None  # type: Optional[monitor.SpeedMonitor]
-        self.abrController = None  # type: Optional[abr.ABRController]
+        self.speed_monitor = None  # type: Optional[monitor.SpeedMonitor]
+        self.abr_controller = None  # type: Optional[abr.ABRController]
 
         self.data_downloaded = 0
 
@@ -41,17 +42,17 @@ class Emulator():
         mpd_content: str = requests.get(target).text
         self.mpd = mpd.MPD(mpd_content, target)
 
-        self.speedMonitor = monitor.SpeedMonitor()
-        self.abrController = abr.ABRController(self.mpd, self.speedMonitor, self.config)
+        self.speed_monitor = monitor.SpeedMonitor(self.config)
+        self.abr_controller = abr.ABRController(self.mpd, self.speed_monitor, self.config)
 
         feed_speed_monitor_task = asyncio.create_task(self.feed_speed_monitor())
 
         # video
-        representation = self.abrController.choose("video")
+        representation = self.abr_controller.choose("video")
         ind = representation.startNumber
 
         while ind < len(representation.urls):
-            representation = self.abrController.choose("video")
+            representation = self.abr_controller.choose("video")
             if not representation.is_inited:
                 url = representation.initialization
                 task = asyncio.create_task(self.download_segment(url))
