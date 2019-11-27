@@ -1,5 +1,7 @@
+import asyncio
 from typing import Optional, Dict
 
+import aiohttp
 import requests
 
 from dash_emulator import arguments, mpd, config, logger, abr, monitor
@@ -8,20 +10,60 @@ log = logger.getLogger(__name__)
 
 
 class Emulator():
+    async def download_segment(self, url):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                while True:
+                    chunk = await resp.content.read(1024)
+                    if not chunk:
+                        break
+                    self.data_downloaded += len(chunk)
+
+    async def feed_speed_monitor(self):
+        while True:
+            data_previous = self.data_downloaded
+            await asyncio.sleep(1)
+            diff = self.data_downloaded - data_previous
+            self.speedMonitor.feed(diff, 1)
+
     def __init__(self, args):
         self.args = args  # type: Dict[str, str]
         self.config = config.Config(args)
         self.mpd = None  # type: Optional[mpd.MPD]
 
-    def start(self):
+        self.speedMonitor = None  # type: Optional[monitor.SpeedMonitor]
+        self.abrController = None  # type: Optional[abr.ABRController]
+
+        self.data_downloaded = 0
+
+    async def start(self):
         target: str = self.args[arguments.PLAYER_TARGET]  # MPD file link
         mpd_content: str = requests.get(target).text
         self.mpd = mpd.MPD(mpd_content, target)
 
-        speedMonitor = monitor.SpeedMonitor()
-        abrController = abr.ABRController(self.mpd, speedMonitor, self.config)
+        self.speedMonitor = monitor.SpeedMonitor()
+        self.abrController = abr.ABRController(self.mpd, self.speedMonitor, self.config)
+
+        feed_speed_monitor_task = asyncio.create_task(self.feed_speed_monitor())
 
         # video
-        representation = abrController.choose("video")
-        urls = representation.urls
-        init_url = representation.initialization
+        representation = self.abrController.choose("video")
+        ind = representation.startNumber
+
+        while ind < len(representation.urls):
+            representation = self.abrController.choose("video")
+            if not representation.is_inited:
+                url = representation.initialization
+                task = asyncio.create_task(self.download_segment(url))
+                await task
+                print("Download initialzation for representation %s" % representation.id)
+                representation.is_inited = True
+
+            url = representation.urls[ind]
+            task = asyncio.create_task(self.download_segment(url))
+
+            await task
+            print("Download one segment: representation %s, segment %d" % (representation.id, ind))
+            ind += 1
+
+        feed_speed_monitor_task.cancel()

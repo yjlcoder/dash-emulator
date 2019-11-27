@@ -1,5 +1,7 @@
 import argparse
 import re
+import asyncio
+
 from typing import Dict, Union
 
 from dash_emulator import logger, arguments, emulator
@@ -49,4 +51,4 @@ if __name__ == '__main__':
         exit(-1)
 
     emulator = emulator.Emulator(args)
-    emulator.start()
+    asyncio.run(emulator.start())

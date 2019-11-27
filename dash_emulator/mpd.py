@@ -29,6 +29,8 @@ class Representation(object):
 
         self.baseurl = None
 
+        self.is_inited = False
+
         self.parse(tree)
 
     @property
@@ -59,8 +61,10 @@ class Representation(object):
         self._mime = tree.attrib['mimeType']
         self._codec = tree.attrib['codecs']
         self._bandwidth = tree.attrib['bandwidth']
-        self._width = tree.attrib['width']
-        self._height = tree.attrib['height']
+        if 'width' in tree.attrib:
+            self._width = tree.attrib['width']
+        if 'height' in tree.attrib:
+            self._height = tree.attrib['height']
 
         segmentTemplate = tree.find("{%s}SegmentTemplate" % self._adapatationSet.mpd.namespace)
         self.initialization = segmentTemplate.attrib["initialization"].replace("$RepresentationID$",
@@ -92,7 +96,6 @@ class Representation(object):
 
             num += 1
 
-        print(self.urls)
 
 
 class AdapationSet(object):
