@@ -1,4 +1,7 @@
-from dash_emulator import config
+from dash_emulator import config, logger
+
+log = logger.getLogger(__name__)
+
 
 class SpeedMonitor(object):
     def __init__(self, cfg):
@@ -13,7 +16,11 @@ class SpeedMonitor(object):
             self.avg_bandwidth = self.last_speed
         else:
             self.last_speed = data / time
-            self.avg_bandwidth = self.cfg.smoothing_factor * self.last_speed + (1 - self.cfg.smoothing_factor) * self.avg_bandwidth
+            self.avg_bandwidth = self.cfg.smoothing_factor * self.last_speed + (
+                        1 - self.cfg.smoothing_factor) * self.avg_bandwidth
 
     def print(self):
-        print("Avg bandwidth: %d bps" % (self.avg_bandwidth * 8))
+        log.info("Avg bandwidth: %d bps" % (self.avg_bandwidth * 8))
+
+    def get_speed(self):
+        return self.avg_bandwidth
