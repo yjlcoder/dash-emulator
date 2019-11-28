@@ -14,7 +14,7 @@ class Emulator():
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
                 while True:
-                    chunk = await resp.content.read(1024)
+                    chunk = await resp.content.read(40960)
                     if not chunk:
                         break
                     self.data_downloaded += len(chunk)
