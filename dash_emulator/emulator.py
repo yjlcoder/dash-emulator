@@ -74,7 +74,8 @@ class Emulator():
         self.config = config.Config(args)
         self.mpd = None  # type: Optional[mpd.MPD]
 
-        self.speed_monitor = None  # type: Optional[monitor.SpeedMonitor]
+        self.speed_monitor = monitor.SpeedMonitor(self.config)  # type: monitor.SpeedMonitor
+        self.buffer_monitor = monitor.BufferMonitor(self.config)  # type: monitor.BufferMonitor
         self.abr_controller = None  # type: Optional[abr.ABRController]
 
         self.data_downloaded = 0
@@ -94,7 +95,6 @@ class Emulator():
         mpd_content: str = requests.get(target).text
         self.mpd = mpd.MPD(mpd_content, target)
 
-        self.speed_monitor = monitor.SpeedMonitor(self.config)
         self.abr_controller = abr.ABRController(self.mpd, self.speed_monitor, self.config)
 
         self.feed_speed_monitor_task = asyncio.create_task(self.feed_speed_monitor())
@@ -118,7 +118,11 @@ class Emulator():
 
             await self.task
             self.task = None
+            if ind == representation.startNumber:
+                self.buffer_monitor.set_start_time(time.time())
+            self.buffer_monitor.feed_segment(representation.durations[ind])
             log.info("Download one segment: representation %s, segment %d" % (representation.id, ind))
+            log.info("Buffer level: %.3f" % self.buffer_monitor.buffer_level)
             ind += 1
 
         self.feed_speed_monitor_task.cancel()

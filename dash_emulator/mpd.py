@@ -80,7 +80,7 @@ class Representation(object):
 
         num = self.startNumber
         for segment in segmentTimeline:
-            self.durations.append(segment.attrib['d'])
+            self.durations.append(float(segment.attrib['d']))
             filename = re.sub(r"\$Number(\%\d+d)\$", r"\1", self.media.replace("$RepresentationID$", str(self.id)))
             filename = filename % num
             self.urls.append(base._replace(path=os.path.join(basepath, filename)).geturl())
@@ -88,7 +88,7 @@ class Representation(object):
             if 'r' in segment.attrib:
                 for i in range(int(segment.attrib['r'])):
                     num += 1
-                    self.durations.append(segment.attrib['d'])
+                    self.durations.append(float(segment.attrib['d']))
                     filename = re.sub(r"\$Number(\%\d+d)\$", r"\1",
                                       self.media.replace("$RepresentationID$", str(self.id)))
                     filename = filename % num
