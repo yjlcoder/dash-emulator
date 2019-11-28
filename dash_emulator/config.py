@@ -18,3 +18,6 @@ class Config(object):
 
         # Timeout max ratio
         self.timeout_max_ratio = 2
+
+        # Update interval
+        self.update_interval = 0.05

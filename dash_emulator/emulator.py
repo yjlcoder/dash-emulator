@@ -5,7 +5,7 @@ from typing import Optional, Dict
 import aiohttp
 import requests
 
-from dash_emulator import arguments, mpd, config, logger, abr, monitor
+from dash_emulator import arguments, mpd, config, logger, abr, monitor, events
 
 log = logger.getLogger(__name__)
 
@@ -19,24 +19,11 @@ class Emulator():
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
                 self.segment_content_length = resp.headers["Content-Length"]
-                self.data_downloaded_before_this_segment = self.data_downloaded
                 while True:
                     chunk = await resp.content.read(40960)
                     if not chunk:
                         break
-                    self.data_downloaded += len(chunk)
-
-    async def feed_speed_monitor(self):
-        """
-        Coroutine of feeding download speed into speed monitor
-        :return: a coroutine object
-        """
-        while True:
-            data_previous = self.data_downloaded
-            await asyncio.sleep(1)
-            diff = self.data_downloaded - data_previous
-            await self.speed_monitor.feed(diff, 1)
-            self.speed_monitor.print()
+                    monitor.SpeedMonitor().downloaded += len(chunk)
 
     async def download_progress_monitor(self):
         """
@@ -74,12 +61,13 @@ class Emulator():
         self.config = config.Config(args)
         self.mpd = None  # type: Optional[mpd.MPD]
 
-        self.speed_monitor = monitor.SpeedMonitor(self.config)  # type: monitor.SpeedMonitor
-        self.buffer_monitor = monitor.BufferMonitor(self.config)  # type: monitor.BufferMonitor
-        self.abr_controller = None  # type: Optional[abr.ABRController]
+        speed_monitor = monitor.SpeedMonitor()  # type: monitor.SpeedMonitor
+        speed_monitor.init(self.config)
 
-        self.data_downloaded = 0
-        self.data_downloaded_before_this_segment = 0
+        buffer_monitor = monitor.BufferMonitor()  # type: monitor.BufferMonitor
+        buffer_monitor.init(self.config)
+
+        self.abr_controller = None  # type: Optional[abr.ABRController]
 
         self.set_to_lowest_quaity = False
 
@@ -95,18 +83,15 @@ class Emulator():
         mpd_content: str = requests.get(target).text
         self.mpd = mpd.MPD(mpd_content, target)
 
-        self.abr_controller = abr.ABRController(self.mpd, self.speed_monitor, self.config)
+        await events.EventBridge().trigger(events.Events.MPDParseComplete)
 
-        self.feed_speed_monitor_task = asyncio.create_task(self.feed_speed_monitor())
+        self.abr_controller = abr.ABRController(self.mpd, monitor.SpeedMonitor(), self.config)
 
         # video
         representation = self.abr_controller.choose("video")
         ind = representation.startNumber
 
         while ind < len(representation.urls):
-            # Do not make the buffer level exceed the max buffer size
-            if self.buffer_monitor.buffer_level > self.config.max_buffer:
-                await asyncio.sleep(self.config.max_buffer - self.buffer_monitor.buffer_level)
 
             representation = self.abr_controller.choose("video")
             if not representation.is_inited:
@@ -126,6 +111,7 @@ class Emulator():
             if ind == representation.startNumber:
                 self.buffer_monitor.set_start_time(time.time())
             self.buffer_monitor.feed_segment(representation.durations[ind])
+            await events.EventBridge().trigger(events.Events.DownloadComplete)
             log.info("Download one segment: representation %s, segment %d" % (representation.id, ind))
             log.info("Buffer level: %.3f" % self.buffer_monitor.buffer_level)
             ind += 1

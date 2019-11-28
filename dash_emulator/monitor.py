@@ -1,16 +1,50 @@
-import time
+import asyncio
 
-from dash_emulator import config, logger
+from dash_emulator import config, logger, events
 
 log = logger.getLogger(__name__)
 
 
 class SpeedMonitor(object):
-    def __init__(self, cfg):
-        self.cfg = cfg  # type: config.Config
+    _instance = None
 
-        self.avg_bandwidth = 0
-        self.last_speed = -1
+    def __new__(cls, *args, **kwargs):
+        if not isinstance(cls._instance, cls):
+            cls._instance = object.__new__(cls, *args, **kwargs)
+            cls._instance.inited = False
+        return cls._instance
+
+    def __init__(self):
+        if not self.inited:
+            self.inited = True
+            self.cfg = None
+
+            self.avg_bandwidth = 0
+            self.last_speed = -1
+
+            self.downloaded = 0
+            self.downloaded_before = 0
+
+    async def calculate_speed(self):
+        while True:
+            downloaded = self.downloaded
+            await asyncio.sleep(1)
+            await self.feed(self.downloaded - downloaded, 1)
+            self.print()
+
+    def init(self, cfg):
+        self.cfg = cfg  # type: config.Config
+        event_bridge = events.EventBridge()
+
+        async def calculate_speed():
+            asyncio.create_task(self.calculate_speed())
+
+        event_bridge.add_listener(events.Events.MPDParseComplete, calculate_speed)
+
+        async def download_complete():
+            self.downloaded_before = self.downloaded
+
+        event_bridge.add_listener(events.Events.DownloadComplete, download_complete)
 
     async def feed(self, data, time):
         if self.last_speed < 0:
@@ -29,24 +63,33 @@ class SpeedMonitor(object):
 
 
 class BufferMonitor(object):
-    def __init__(self, cfg):
-        self.cfg = cfg
-        self._start_time = None
+    _instance = None
 
-        self._buffer = 0
+    def __new__(cls, *args, **kwargs):
+        if not isinstance(cls._instance, cls):
+            cls._instance = object.__new__(cls, *args, **kwargs)
+            cls._instance.inited = False
+        return cls._instance
+
+    def __init__(self):
+        if not self.inited:
+            self.inited = True
+
+            self.cfg = None
+            self._start_time = None
+
+            self._buffer = 0
+
+    def init(self, cfg):
+        self.cfg = cfg
 
     @property
     def start_time(self):
         return self._start_time
 
     @property
-    def buffer_level(self):
-        if self._start_time is None:
-            return 0
-        return time.time() - self._start_time
-
-    def set_start_time(self, start_time):
-        self._start_time = start_time
+    def buffer(self):
+        return self._buffer
 
     def feed_segment(self, duration):
         self._buffer += duration
