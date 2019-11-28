@@ -104,6 +104,10 @@ class Emulator():
         ind = representation.startNumber
 
         while ind < len(representation.urls):
+            # Do not make the buffer level exceed the max buffer size
+            if self.buffer_monitor.buffer_level > self.config.max_buffer:
+                await asyncio.sleep(self.config.max_buffer - self.buffer_monitor.buffer_level)
+
             representation = self.abr_controller.choose("video")
             if not representation.is_inited:
                 url = representation.initialization
@@ -118,6 +122,7 @@ class Emulator():
 
             await self.task
             self.task = None
+
             if ind == representation.startNumber:
                 self.buffer_monitor.set_start_time(time.time())
             self.buffer_monitor.feed_segment(representation.durations[ind])

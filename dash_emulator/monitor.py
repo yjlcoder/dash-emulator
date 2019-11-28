@@ -41,6 +41,8 @@ class BufferMonitor(object):
 
     @property
     def buffer_level(self):
+        if self._start_time is None:
+            return 0
         return time.time() - self._start_time
 
     def set_start_time(self, start_time):
