@@ -18,7 +18,7 @@ class Representation(object):
         self._mime = None
         self._codec = None
 
-        self._adapatationSet = adapatationSet  # type: AdapationSet
+        self._adapatationSet = adapatationSet  # type: AdaptationSet
 
         self.initialization = None
         self.media = None
@@ -97,8 +97,7 @@ class Representation(object):
             num += 1
 
 
-
-class AdapationSet(object):
+class AdaptationSet(object):
     def __init__(self, tree, mpd):
         self.tree = tree
         self.id = None  # type: Optional[int]
@@ -122,8 +121,8 @@ class MPD(object):
         self.namespace = None
         self.mediaPresentationDuration = None  # type: Optional[float]
         self.minBufferTime = None  # type: Optional[int]
-        self.videoAdaptationSet = None  # type: Optional[AdapationSet]
-        self.audioAdaptationSet = None  # type: Optional[AdapationSet]
+        self.videoAdaptationSet = None  # type: Optional[AdaptationSet]
+        self.audioAdaptationSet = None  # type: Optional[AdaptationSet]
 
         self.parse()
 
@@ -160,8 +159,8 @@ class MPD(object):
         for adapationSet in period:
             contentType = adapationSet.attrib["contentType"]
             if contentType == 'video':
-                self.videoAdaptationSet = AdapationSet(adapationSet, self)
+                self.videoAdaptationSet = AdaptationSet(adapationSet, self)
             elif contentType == 'audio':
-                self.audioAdaptationSet = AdapationSet(adapationSet, self)
+                self.audioAdaptationSet = AdaptationSet(adapationSet, self)
             else:
                 log.error("[Parse MPD] Unsupported content type in AdaptationSet: %s" % contentType)
