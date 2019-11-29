@@ -79,6 +79,9 @@ class Emulator():
         self.feed_speed_monitor_task = None  # type: Optional[asyncio.Task]
 
     async def start(self):
+        event_thread = events.EventBridge()
+        event_thread.start()
+
         target: str = self.args[arguments.PLAYER_TARGET]  # MPD file link
         mpd_content: str = requests.get(target).text
         self.mpd = mpd.MPD(mpd_content, target)
@@ -108,12 +111,10 @@ class Emulator():
             await self.task
             self.task = None
 
-            if ind == representation.startNumber:
-                self.buffer_monitor.set_start_time(time.time())
-            self.buffer_monitor.feed_segment(representation.durations[ind])
+            monitor.BufferMonitor().feed_segment(representation.durations[ind])
             await events.EventBridge().trigger(events.Events.DownloadComplete)
             log.info("Download one segment: representation %s, segment %d" % (representation.id, ind))
-            log.info("Buffer level: %.3f" % self.buffer_monitor.buffer_level)
+            log.info("Buffer level: %.3f" % monitor.BufferMonitor().buffer)
             ind += 1
 
         self.feed_speed_monitor_task.cancel()

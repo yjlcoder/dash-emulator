@@ -76,16 +76,11 @@ class BufferMonitor(object):
             self.inited = True
 
             self.cfg = None
-            self._start_time = None
 
             self._buffer = 0
 
     def init(self, cfg):
         self.cfg = cfg
-
-    @property
-    def start_time(self):
-        return self._start_time
 
     @property
     def buffer(self):
