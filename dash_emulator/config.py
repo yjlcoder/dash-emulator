@@ -21,3 +21,6 @@ class Config(object):
 
         # Update interval
         self.update_interval = 0.05
+
+        # Chunk size
+        self.chunk_size = 40960

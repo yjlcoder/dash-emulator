@@ -2,12 +2,22 @@ import asyncio
 import time
 from typing import Optional
 
-from dash_emulator import events, monitor, mpd, config, logger
+import aiohttp
+
+from dash_emulator import events, monitor, mpd, config, logger, abr
 
 log = logger.getLogger(__name__)
 
 
 class PlayManager(object):
+    class State:
+        READY = 0
+        PLAYING = 1
+        STALLING = 2
+        STOPPED = 3
+
+    _instance = None
+
     def __new__(cls, *args, **kwargs):
         if not isinstance(cls._instance, cls):
             cls._instance = object.__new__(cls, *args, **kwargs)
@@ -26,9 +36,40 @@ class PlayManager(object):
             self.check_buffer_sufficient_task = None  # type: Optional[asyncio.Task]
             self.update_current_time_task = None  # type: Optional[asyncio.Task]
 
+            self.abr_controller = None  # type: Optional[abr.ABRController]
+            self.state = PlayManager.State.READY
+
+    def switch_state(self, state):
+        if state == "READY" or state == PlayManager.State.READY:
+            self.state = PlayManager.State.READY
+        elif state == "PLAYING" or state == PlayManager.State.PLAYING:
+            self.state = PlayManager.State.PLAYING
+        elif state == "STALLING" or state == PlayManager.State.STALLING:
+            self.state = PlayManager.State.STALLING
+        elif state == "STOPPED" or state == PlayManager.State.STOPPED:
+            self.state = PlayManager.State.STOPPED
+        else:
+            log.error("Unknown State: %s" % state)
+
+    @property
+    def ready(self):
+        return self.state == PlayManager.State.READY
+
+    @property
+    def playing(self):
+        return self.state == PlayManager.State.PLAYING
+
+    @property
+    def stalling(self):
+        return self.state == PlayManager.State.STALLING
+
+    @property
+    def stopped(self):
+        return self.state == PlayManager.State.STOPPED
+
     @property
     def buffer_level(self):
-        return self.current_time - monitor.BufferMonitor().buffer
+        return monitor.BufferMonitor().buffer - self.current_time
 
     async def check_buffer_sufficient(self):
         while True:
@@ -50,16 +91,21 @@ class PlayManager(object):
         self.cfg = cfg
         self.mpd = mpd
 
+        self.abr_controller = abr.ABRController()
+
         # Play immediately
         async def can_play():
+            log.info("The player is ready to play")
             await events.EventBridge().trigger(events.Events.Play)
 
         events.EventBridge().add_listener(events.Events.CanPlay, can_play)
 
         async def play():
+            log.info("Video playback started")
             self.start_time = time.time()
             self.update_current_time_task = asyncio.create_task(self.update_current_time())
             self.check_buffer_sufficient_task = asyncio.create_task(self.check_buffer_sufficient())
+            self.switch_state("PLAYING")
 
         events.EventBridge().add_listener(events.Events.Play, play)
 
@@ -70,6 +116,7 @@ class PlayManager(object):
                 self.check_buffer_sufficient_task.cancel()
 
             log.debug("Stall happened")
+            self.switch_state("STALLING")
             before_stall = time.time()
             while True:
                 await asyncio.sleep(self.cfg.update_interval)
@@ -79,3 +126,84 @@ class PlayManager(object):
             await events.EventBridge().trigger(events.Events.Play)
 
         events.EventBridge().add_listener(events.Events.Stall, stall)
+
+        async def download_start():
+            DownloadManager().representation = self.abr_controller.choose("video")
+            DownloadManager().video_ind = DownloadManager().representation.startNumber
+            await events.EventBridge().trigger(events.Events.DownloadStart)
+
+        events.EventBridge().add_listener(events.Events.MPDParseComplete, download_start)
+
+        async def download_next():
+            monitor.BufferMonitor().feed_segment(
+                DownloadManager().representation.durations[DownloadManager().video_ind])
+            log.info("Current Buffer Level: %.3f" % self.buffer_level)
+            DownloadManager().representation = self.abr_controller.choose("video")
+            DownloadManager().video_ind = DownloadManager().representation.startNumber
+            await events.EventBridge().trigger(events.Events.DownloadStart)
+
+        async def check_canplay():
+            if self.ready and self.buffer_level > self.mpd.minBufferTime:
+                await events.EventBridge().trigger(events.Events.CanPlay)
+
+        events.EventBridge().add_listener(events.Events.DownloadComplete, download_next)
+        events.EventBridge().add_listener(events.Events.DownloadComplete, check_canplay)
+
+
+class DownloadManager(object):
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if not isinstance(cls._instance, cls):
+            cls._instance = object.__new__(cls, *args, **kwargs)
+            cls._instance.inited = False
+        return cls._instance
+
+    def __init__(self):
+        if not self.inited:
+            self.inited = True
+
+            self.cfg = None  # type: Optional[config.Config]
+            self.mpd = None  # type: Optional[mpd.MPD]
+
+            self.video_ind = None
+            self.audio_ind = None
+
+            self.abr_controller = None
+            self.segment_length = None
+
+            self.representation = None  # type: Optional[mpd.Representation]
+
+    async def download(self, url):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                self.segment_length = resp.headers["Content-Length"]
+                while True:
+                    chunk = await resp.content.read(self.cfg.chunk_size)
+                    if not chunk:
+                        break
+                    monitor.SpeedMonitor().downloaded += len(chunk)
+
+    def init(self, cfg, mpd):
+        self.cfg = cfg
+        self.mpd = mpd
+
+        async def start_download():
+            if self.video_ind > len(self.representation.urls):
+                await events.EventBridge().trigger(events.Events.End)
+                return
+            if not self.representation.is_inited:
+                url = self.representation.initialization
+                task = asyncio.create_task(self.download(url))
+                await task
+                self.representation.is_inited = True
+                await events.EventBridge().trigger(events.Events.InitializationDownloadComplete)
+                log.info("Download initialization for representation %s" % self.representation.id)
+
+            url = self.representation.urls[self.video_ind]
+            task = asyncio.create_task(self.download(url))
+            await task
+            await events.EventBridge().trigger(events.Events.DownloadComplete)
+            log.info("Download one segment: representation %s, segment %d" % (self.representation.id, self.video_ind))
+
+        events.EventBridge().add_listener(events.Events.DownloadStart, start_download)

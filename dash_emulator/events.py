@@ -1,8 +1,12 @@
 import asyncio
 import inspect
 import threading
+import time
 from typing import Callable, List, Union, Optional
 
+from dash_emulator import logger
+
+log = logger.getLogger(__name__)
 
 class Event(object):
     @staticmethod
@@ -14,7 +18,7 @@ class Event(object):
 
     async def trigger(self):
         for callback in self.callbacks:
-            await callback()
+            asyncio.create_task(callback())
 
 
 class Events(object):
@@ -28,6 +32,9 @@ class Events(object):
         pass
 
     class DownloadComplete(Event):
+        pass
+
+    class InitializationDownloadComplete(Event):
         pass
 
     class DownloadStart(Event):
@@ -84,6 +91,7 @@ class EventBridge(threading.Thread):
     async def listen(self):
         while True:
             event = await self._queue.get()
+            log.debug("Event %s got triggered" % event.__class__.__name__)
             await event.trigger()
 
     def run(self):

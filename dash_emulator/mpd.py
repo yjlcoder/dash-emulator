@@ -72,6 +72,7 @@ class Representation(object):
         self.initialization = base._replace(path=os.path.join(basepath, self.initialization)).geturl()
         self.media = segmentTemplate.attrib['media']
         self.startNumber = int(segmentTemplate.attrib['startNumber'])
+        self.timescale = int(segmentTemplate.attrib['timescale'])
 
         self.durations = [None] * self.startNumber
         self.urls = [None] * self.startNumber
@@ -80,7 +81,7 @@ class Representation(object):
 
         num = self.startNumber
         for segment in segmentTimeline:
-            self.durations.append(float(segment.attrib['d']))
+            self.durations.append(float(segment.attrib['d']) / self.timescale)
             filename = re.sub(r"\$Number(\%\d+d)\$", r"\1", self.media.replace("$RepresentationID$", str(self.id)))
             filename = filename % num
             self.urls.append(base._replace(path=os.path.join(basepath, filename)).geturl())

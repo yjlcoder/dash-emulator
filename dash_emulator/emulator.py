@@ -5,7 +5,7 @@ from typing import Optional, Dict
 import aiohttp
 import requests
 
-from dash_emulator import arguments, mpd, config, logger, abr, monitor, events
+from dash_emulator import arguments, mpd, config, logger, abr, monitor, events, managers
 
 log = logger.getLogger(__name__)
 
@@ -61,9 +61,11 @@ class Emulator():
         self.config = config.Config(args)
         self.mpd = None  # type: Optional[mpd.MPD]
 
+        # Init the speed monitor
         speed_monitor = monitor.SpeedMonitor()  # type: monitor.SpeedMonitor
         speed_monitor.init(self.config)
 
+        # Init the buffer monitor
         buffer_monitor = monitor.BufferMonitor()  # type: monitor.BufferMonitor
         buffer_monitor.init(self.config)
 
@@ -79,6 +81,7 @@ class Emulator():
         self.feed_speed_monitor_task = None  # type: Optional[asyncio.Task]
 
     async def start(self):
+        # Init the event bridge
         event_thread = events.EventBridge()
         event_thread.start()
 
@@ -86,35 +89,44 @@ class Emulator():
         mpd_content: str = requests.get(target).text
         self.mpd = mpd.MPD(mpd_content, target)
 
+        # Init the play manager
+        play_manager = managers.PlayManager()
+        play_manager.init(self.config, self.mpd)
+
+        # Init the download manager
+        download_manager = managers.DownloadManager()
+        download_manager.init(self.config, self.mpd)
+
+        self.abr_controller = abr.ABRController()
+        self.abr_controller.init(self.mpd, monitor.SpeedMonitor(), self.config)
+
         await events.EventBridge().trigger(events.Events.MPDParseComplete)
 
-        self.abr_controller = abr.ABRController(self.mpd, monitor.SpeedMonitor(), self.config)
-
         # video
-        representation = self.abr_controller.choose("video")
-        ind = representation.startNumber
+        #representation = self.abr_controller.choose("video")
+        #ind = representation.startNumber
 
-        while ind < len(representation.urls):
+        #while ind < len(representation.urls):
 
-            representation = self.abr_controller.choose("video")
-            if not representation.is_inited:
-                url = representation.initialization
-                self.task = asyncio.create_task(self.download_segment(url))
-                await self.task
-                self.task = None
-                log.info("Download initialization for representation %s" % representation.id)
-                representation.is_inited = True
+        #    representation = self.abr_controller.choose("video")
+        #    if not representation.is_inited:
+        #        url = representation.initialization
+        #        self.task = asyncio.create_task(self.download_segment(url))
+        #        await self.task
+        #        self.task = None
+        #        log.info("Download initialization for representation %s" % representation.id)
+        #        representation.is_inited = True
 
-            url = representation.urls[ind]
-            self.task = asyncio.create_task(self.download_segment(url))
+        #    url = representation.urls[ind]
+        #    self.task = asyncio.create_task(self.download_segment(url))
 
-            await self.task
-            self.task = None
+        #    await self.task
+        #    self.task = None
 
-            monitor.BufferMonitor().feed_segment(representation.durations[ind])
-            await events.EventBridge().trigger(events.Events.DownloadComplete)
-            log.info("Download one segment: representation %s, segment %d" % (representation.id, ind))
-            log.info("Buffer level: %.3f" % monitor.BufferMonitor().buffer)
-            ind += 1
+        #    monitor.BufferMonitor().feed_segment(representation.durations[ind])
+        #    await events.EventBridge().trigger(events.Events.DownloadComplete)
+        #    log.info("Download one segment: representation %s, segment %d" % (representation.id, ind))
+        #    log.info("Buffer level: %.3f" % monitor.BufferMonitor().buffer)
+        #    ind += 1
 
-        self.feed_speed_monitor_task.cancel()
+        #self.feed_speed_monitor_task.cancel()

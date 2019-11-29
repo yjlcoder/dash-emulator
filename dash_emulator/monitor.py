@@ -1,6 +1,6 @@
 import asyncio
 
-from dash_emulator import config, logger, events
+from dash_emulator import config, logger, events, managers
 
 log = logger.getLogger(__name__)
 
@@ -45,6 +45,7 @@ class SpeedMonitor(object):
             self.downloaded_before = self.downloaded
 
         event_bridge.add_listener(events.Events.DownloadComplete, download_complete)
+        event_bridge.add_listener(events.Events.InitializationDownloadComplete, download_complete)
 
     async def feed(self, data, time):
         if self.last_speed < 0:
