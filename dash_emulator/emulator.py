@@ -102,7 +102,7 @@ class Emulator():
                 self.task = asyncio.create_task(self.download_segment(url))
                 await self.task
                 self.task = None
-                log.info("Download initialzation for representation %s" % representation.id)
+                log.info("Download initialization for representation %s" % representation.id)
                 representation.is_inited = True
 
             url = representation.urls[ind]
