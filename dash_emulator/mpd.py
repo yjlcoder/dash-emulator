@@ -1,3 +1,4 @@
+import operator
 import os.path
 import re
 import xml.etree.ElementTree as ET
@@ -60,7 +61,7 @@ class Representation(object):
         self._id = tree.attrib['id']
         self._mime = tree.attrib['mimeType']
         self._codec = tree.attrib['codecs']
-        self._bandwidth = tree.attrib['bandwidth']
+        self._bandwidth = int(tree.attrib['bandwidth'])
         if 'width' in tree.attrib:
             self._width = tree.attrib['width']
         if 'height' in tree.attrib:
@@ -74,7 +75,7 @@ class Representation(object):
         self.startNumber = int(segmentTemplate.attrib['startNumber'])
         self.timescale = int(segmentTemplate.attrib['timescale'])
 
-        self.durations = [None] * self.startNumber
+        self.durations = [None] * self.startNumber  # type: List[int]
         self.urls = [None] * self.startNumber
 
         segmentTimeline = segmentTemplate.find("{%s}SegmentTimeline" % self._adapatationSet.mpd.namespace)
@@ -89,7 +90,7 @@ class Representation(object):
             if 'r' in segment.attrib:
                 for i in range(int(segment.attrib['r'])):
                     num += 1
-                    self.durations.append(float(segment.attrib['d']))
+                    self.durations.append(float(segment.attrib['d']) / self.timescale)
                     filename = re.sub(r"\$Number(\%\d+d)\$", r"\1",
                                       self.media.replace("$RepresentationID$", str(self.id)))
                     filename = filename % num
@@ -111,6 +112,7 @@ class AdaptationSet(object):
         self.id = self.tree.attrib['id']
         for representation in self.tree:
             self.representations.append(Representation(representation, self))
+        self.representations.sort(key=operator.attrgetter('bandwidth'))
 
 
 class MPD(object):
@@ -121,7 +123,7 @@ class MPD(object):
         self.type = None
         self.namespace = None
         self.mediaPresentationDuration = None  # type: Optional[float]
-        self.minBufferTime = None  # type: Optional[int]
+        self.minBufferTime = None  # type: Optional[float]
         self.videoAdaptationSet = None  # type: Optional[AdaptationSet]
         self.audioAdaptationSet = None  # type: Optional[AdaptationSet]
 

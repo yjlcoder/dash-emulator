@@ -1,7 +1,19 @@
 class Config(object):
     def __init__(self, args):
-        self.min_buffer = 6000
-        self.max_buffer = 8000
+        # Max initial bitrate (bps)
+        self.max_initial_bitrate = 1000000
+
+        # Min Duration for quality increase (ms)
+        self.min_duration_for_quality_increase_ms= 6000
+
+        # Max duration for quality decrease (ms)
+        self.max_duration_for_quality_decrease_ms= 8000
+
+        # Min duration to retrain after discard (ms)
+        self.min_duration_to_retrain_after_discard_ms = 8000
+
+        # Bandwidth fraction
+        self.bandwidth_fraction = 0.75
 
         # averageSpeed = SMOOTHING_FACTOR * lastSpeed + (1-SMOOTHING_FACTOR) * averageSpeed;
         self.smoothing_factor = 0.5

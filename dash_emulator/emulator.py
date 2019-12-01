@@ -2,7 +2,6 @@ import asyncio
 import time
 from typing import Optional, Dict
 
-import aiohttp
 import requests
 
 from dash_emulator import arguments, mpd, config, logger, abr, monitor, events, managers
@@ -11,20 +10,6 @@ log = logger.getLogger(__name__)
 
 
 class Emulator():
-    async def download_segment(self, url):
-        """
-        :param url: segment url (target) to download
-        :return: a coroutine object
-        """
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
-                self.segment_content_length = resp.headers["Content-Length"]
-                while True:
-                    chunk = await resp.content.read(40960)
-                    if not chunk:
-                        break
-                    monitor.SpeedMonitor().downloaded += len(chunk)
-
     async def download_progress_monitor(self):
         """
         In MPEG-DASH, the player cannot download the segment completely, because of the bandwidth fluctuation
@@ -71,14 +56,10 @@ class Emulator():
 
         self.abr_controller = None  # type: Optional[abr.ABRController]
 
-        self.set_to_lowest_quaity = False
-
         # Tasks
         # downloading task
         self.task = None  # type: Optional[asyncio.Task]
         self.segment_content_length = 0  # type: int
-        # task to feed speed into speed monitor
-        self.feed_speed_monitor_task = None  # type: Optional[asyncio.Task]
 
     async def start(self):
         # Init the event bridge
@@ -101,32 +82,3 @@ class Emulator():
         self.abr_controller.init(self.mpd, monitor.SpeedMonitor(), self.config)
 
         await events.EventBridge().trigger(events.Events.MPDParseComplete)
-
-        # video
-        #representation = self.abr_controller.choose("video")
-        #ind = representation.startNumber
-
-        #while ind < len(representation.urls):
-
-        #    representation = self.abr_controller.choose("video")
-        #    if not representation.is_inited:
-        #        url = representation.initialization
-        #        self.task = asyncio.create_task(self.download_segment(url))
-        #        await self.task
-        #        self.task = None
-        #        log.info("Download initialization for representation %s" % representation.id)
-        #        representation.is_inited = True
-
-        #    url = representation.urls[ind]
-        #    self.task = asyncio.create_task(self.download_segment(url))
-
-        #    await self.task
-        #    self.task = None
-
-        #    monitor.BufferMonitor().feed_segment(representation.durations[ind])
-        #    await events.EventBridge().trigger(events.Events.DownloadComplete)
-        #    log.info("Download one segment: representation %s, segment %d" % (representation.id, ind))
-        #    log.info("Buffer level: %.3f" % monitor.BufferMonitor().buffer)
-        #    ind += 1
-
-        #self.feed_speed_monitor_task.cancel()

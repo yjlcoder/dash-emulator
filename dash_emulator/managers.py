@@ -39,6 +39,9 @@ class PlayManager(object):
             self.abr_controller = None  # type: Optional[abr.ABRController]
             self.state = PlayManager.State.READY
 
+            self.current_video_representation_ind = -1
+            self.current_audio_representation_ind = -1
+
     def switch_state(self, state):
         if state == "READY" or state == PlayManager.State.READY:
             self.state = PlayManager.State.READY
@@ -69,7 +72,7 @@ class PlayManager(object):
 
     @property
     def buffer_level(self):
-        return monitor.BufferMonitor().buffer - self.current_time
+        return (monitor.BufferMonitor().buffer - self.current_time) * 1000
 
     async def check_buffer_sufficient(self):
         while True:
@@ -128,7 +131,9 @@ class PlayManager(object):
         events.EventBridge().add_listener(events.Events.Stall, stall)
 
         async def download_start():
-            DownloadManager().representation = self.abr_controller.choose("video")
+            self.current_video_representation_ind = self.abr_controller.choose("video")
+            DownloadManager().representation = self.mpd.videoAdaptationSet.representations[
+                self.current_video_representation_ind]
             DownloadManager().video_ind = DownloadManager().representation.startNumber
             await events.EventBridge().trigger(events.Events.DownloadStart)
 
@@ -138,8 +143,10 @@ class PlayManager(object):
             monitor.BufferMonitor().feed_segment(
                 DownloadManager().representation.durations[DownloadManager().video_ind])
             log.info("Current Buffer Level: %.3f" % self.buffer_level)
-            DownloadManager().representation = self.abr_controller.choose("video")
-            DownloadManager().video_ind = DownloadManager().representation.startNumber
+            self.current_video_representation_ind = self.abr_controller.choose('video')
+            DownloadManager().representation = self.mpd.videoAdaptationSet.representations[
+                self.current_video_representation_ind]
+            DownloadManager().video_ind += 1
             await events.EventBridge().trigger(events.Events.DownloadStart)
 
         async def check_canplay():
@@ -182,7 +189,7 @@ class DownloadManager(object):
                     chunk = await resp.content.read(self.cfg.chunk_size)
                     if not chunk:
                         break
-                    monitor.SpeedMonitor().downloaded += len(chunk)
+                    monitor.SpeedMonitor().downloaded += (len(chunk) * 8)
 
     def init(self, cfg, mpd):
         self.cfg = cfg
