@@ -206,8 +206,8 @@ class DownloadManager(object):
         self.mpd = mpd
 
         async def start_download():
-            if self.video_ind > len(self.representation.urls):
-                await events.EventBridge().trigger(events.Events.End)
+            if self.video_ind >= len(self.representation.urls):
+                await events.EventBridge().trigger(events.Events.DownloadEnd)
                 return
             if not self.representation.is_inited:
                 url = self.representation.initialization

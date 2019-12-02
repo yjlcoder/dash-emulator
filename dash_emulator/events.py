@@ -28,6 +28,9 @@ class Event(object):
 
 
 class Events(object):
+    class DownloadEnd(Event):
+        pass
+
     class MPDParseComplete(Event):
         pass
 
