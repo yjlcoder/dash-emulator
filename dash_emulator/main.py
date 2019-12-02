@@ -51,4 +51,12 @@ if __name__ == '__main__':
         exit(-1)
 
     emulator = emulator.Emulator(args)
-    asyncio.run(emulator.start())
+
+    try:
+        # Python 3.7+
+        asyncio.run(emulator.start())
+    except AttributeError:
+        # Lower than Python 3.7
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(emulator.start())
+

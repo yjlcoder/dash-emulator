@@ -37,7 +37,11 @@ class SpeedMonitor(object):
         event_bridge = events.EventBridge()
 
         async def calculate_speed():
-            asyncio.create_task(self.calculate_speed())
+            try:
+                asyncio.create_task(self.calculate_speed())
+            except AttributeError:
+                loop = asyncio.get_event_loop()
+                loop.create_task(self.calculate_speed())
 
         event_bridge.add_listener(events.Events.MPDParseComplete, calculate_speed)
 

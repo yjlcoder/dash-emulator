@@ -106,8 +106,18 @@ class PlayManager(object):
         async def play():
             log.info("Video playback started")
             self.start_time = time.time()
-            self.update_current_time_task = asyncio.create_task(self.update_current_time())
-            self.check_buffer_sufficient_task = asyncio.create_task(self.check_buffer_sufficient())
+
+            try:
+                self.update_current_time_task = asyncio.create_task(self.update_current_time())
+            except AttributeError:
+                loop = asyncio.get_event_loop()
+                self.update_current_time_task = loop.create_task(self.update_current_time())
+
+            try:
+                self.check_buffer_sufficient_task = asyncio.create_task(self.check_buffer_sufficient())
+            except AttributeError:
+                loop = asyncio.get_event_loop()
+                self.check_buffer_sufficient_task = loop.create_task(self.check_buffer_sufficient())
             self.switch_state("PLAYING")
 
         events.EventBridge().add_listener(events.Events.Play, play)
@@ -201,14 +211,28 @@ class DownloadManager(object):
                 return
             if not self.representation.is_inited:
                 url = self.representation.initialization
-                task = asyncio.create_task(self.download(url))
+
+                task = None
+                try:
+                    task = asyncio.create_task(self.download(url))
+                except AttributeError:
+                    loop = asyncio.get_event_loop()
+                    task = loop.create_task(self.download(url))
+
                 await task
                 self.representation.is_inited = True
                 await events.EventBridge().trigger(events.Events.InitializationDownloadComplete)
                 log.info("Download initialization for representation %s" % self.representation.id)
 
             url = self.representation.urls[self.video_ind]
-            task = asyncio.create_task(self.download(url))
+
+            task = None
+            try:
+                task = asyncio.create_task(self.download(url))
+            except AttributeError:
+                loop = asyncio.get_event_loop()
+                task = loop.create_task(self.download(url))
+
             await task
             await events.EventBridge().trigger(events.Events.DownloadComplete)
             log.info("Download one segment: representation %s, segment %d" % (self.representation.id, self.video_ind))

@@ -1,12 +1,12 @@
 import asyncio
 import inspect
 import threading
-import time
 from typing import Callable, List, Union, Optional
 
 from dash_emulator import logger
 
 log = logger.getLogger(__name__)
+
 
 class Event(object):
     @staticmethod
@@ -18,7 +18,13 @@ class Event(object):
 
     async def trigger(self):
         for callback in self.callbacks:
-            asyncio.create_task(callback())
+            try:
+                # Python 3.7
+                asyncio.create_task(callback())
+            except AttributeError:
+                # Lower than Python 3.7
+                loop = asyncio.get_event_loop()
+                loop.create_task(callback())
 
 
 class Events(object):
