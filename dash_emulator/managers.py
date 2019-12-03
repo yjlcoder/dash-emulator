@@ -3,6 +3,7 @@ import time
 from typing import Optional
 
 import aiohttp
+import matplotlib.pyplot as plt
 
 from dash_emulator import events, monitor, mpd, config, logger, abr
 
@@ -42,6 +43,9 @@ class PlayManager(object):
             self.current_video_representation_ind = -1
             self.current_audio_representation_ind = -1
 
+            # Statistical_data
+            self._bandwidth_segmentwise = {}
+
     def switch_state(self, state):
         if state == "READY" or state == PlayManager.State.READY:
             self.state = PlayManager.State.READY
@@ -76,8 +80,9 @@ class PlayManager(object):
 
     async def check_buffer_sufficient(self):
         while True:
-            if monitor.BufferMonitor().buffer > self.current_time:
-                await asyncio.sleep(monitor.BufferMonitor().buffer - self.current_time)
+            if self.buffer_level > 0:
+                log.error("SLEEP %.1f" % (self.buffer_level / 1000))
+                await asyncio.sleep(self.buffer_level / 1000)
             else:
                 break
         if self.mpd.mediaPresentationDuration <= self.current_time:
@@ -150,6 +155,9 @@ class PlayManager(object):
         events.EventBridge().add_listener(events.Events.MPDParseComplete, download_start)
 
         async def download_next():
+            # Save some statistical data
+            self.save_statistical_data()
+
             monitor.BufferMonitor().feed_segment(
                 DownloadManager().representation.durations[DownloadManager().video_ind])
             log.info("Current Buffer Level: %.3f" % self.buffer_level)
@@ -165,6 +173,37 @@ class PlayManager(object):
 
         events.EventBridge().add_listener(events.Events.DownloadComplete, download_next)
         events.EventBridge().add_listener(events.Events.DownloadComplete, check_canplay)
+
+        async def plot():
+            # Durations of segments
+            durations = DownloadManager().representation.durations
+            start_num = DownloadManager().representation.startNumber
+            fig = plt.figure()
+            plt.plot([i for i in range(start_num, len(durations))], durations[start_num:])
+            plt.xlabel("Segments")
+            plt.ylabel("Durations (sec)")
+            plt.title("Durations of each segment")
+            fig.savefig("figures/segment-durations.pdf")
+            plt.close()
+
+            # Download bandwidth of each segment
+            fig = plt.figure()
+            inds = [i for i in sorted(self._bandwidth_segmentwise.keys())]
+            bws = [self._bandwidth_segmentwise[i] for i in inds]
+            plt.plot(inds, bws)
+            plt.xlabel("Segments")
+            plt.ylabel("Bandwidth (bps)")
+            plt.title("Bandwidth of downloading each segment")
+            fig.savefig("figures/segment-download-bandwidth.pdf")
+            plt.close()
+
+        events.EventBridge().add_listener(events.Events.End, plot)
+
+    def save_statistical_data(self):
+        # Bandwidth for each segment
+        video_ind = DownloadManager().video_ind
+        speed = monitor.SpeedMonitor().get_speed()
+        self._bandwidth_segmentwise[video_ind] = speed
 
 
 class DownloadManager(object):
@@ -235,6 +274,7 @@ class DownloadManager(object):
 
             await task
             await events.EventBridge().trigger(events.Events.DownloadComplete)
-            log.info("Download one segment: representation %s, segment %d" % (self.representation.id, self.video_ind))
+            log.info("Download one segment: representation %s (%d bps), segment %d" % (
+                self.representation.id, self.representation.bandwidth, self.video_ind))
 
         events.EventBridge().add_listener(events.Events.DownloadStart, start_download)
