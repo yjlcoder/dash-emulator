@@ -96,7 +96,7 @@ class PlayManager(object):
             self.current_time += self.cfg.update_interval
 
     def init(self, cfg, mpd):
-        self.cfg = cfg
+        self.cfg = cfg  # type: config.Config
         self.mpd = mpd
 
         self.abr_controller = abr.ABRController()
@@ -197,7 +197,8 @@ class PlayManager(object):
             fig.savefig("figures/segment-download-bandwidth.pdf")
             plt.close()
 
-        events.EventBridge().add_listener(events.Events.End, plot)
+        if self.cfg.args['plot']:
+            events.EventBridge().add_listener(events.Events.End, plot)
 
     def save_statistical_data(self):
         # Bandwidth for each segment
@@ -233,12 +234,20 @@ class DownloadManager(object):
     async def download(self, url):
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
+                output = self.cfg.args['output']
+                if output is not None:
+                    f = open(output + '/' + url.split('/')[-1], 'wb')
                 self.segment_length = resp.headers["Content-Length"]
                 while True:
                     chunk = await resp.content.read(self.cfg.chunk_size)
                     if not chunk:
+                        if output is not None:
+                            f.close()
                         break
                     monitor.SpeedMonitor().downloaded += (len(chunk) * 8)
+                    if output is not None:
+                        f.write(chunk)
+
 
     def init(self, cfg, mpd):
         self.cfg = cfg
