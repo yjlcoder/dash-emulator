@@ -16,7 +16,7 @@ def create_parser():
     parser.add_argument("--proxy", type=str)
     parser.add_argument("--output", type=str, required=False, default=None,
                         help="Path to output folder")
-    parser.add_argument("--plot", type=bool, required=False, default=False, action='store_true')
+    parser.add_argument("--plot", required=False, default=False, action='store_true')
     parser.add_argument(arguments.PLAYER_TARGET, type=str, help="Target MPD file link")
     return parser
 
