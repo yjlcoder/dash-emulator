@@ -81,7 +81,7 @@ class PlayManager(object):
     async def check_buffer_sufficient(self):
         while True:
             if self.buffer_level > 0:
-                log.error("SLEEP %.1f" % (self.buffer_level / 1000))
+                log.info("Buffer level sufficient: %.1f seconds" % (self.buffer_level / 1000))
                 await asyncio.sleep(self.buffer_level / 1000)
             else:
                 break
@@ -247,7 +247,6 @@ class DownloadManager(object):
                     monitor.SpeedMonitor().downloaded += (len(chunk) * 8)
                     if output is not None:
                         f.write(chunk)
-
 
     def init(self, cfg, mpd):
         self.cfg = cfg

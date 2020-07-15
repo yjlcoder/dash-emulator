@@ -90,9 +90,11 @@ class EventBridge(threading.Thread):
 
     async def trigger(self, event: Union[str, Event, Event.__class__]):
         if isinstance(event, str):
+            log.debug("Event %s is triggered." % str(type(event)))
             await self.trigger(self._dic_name_obj[event])
             return
         if inspect.isclass(event) and issubclass(event, Event):
+            log.debug("Event %s is triggered." % event)
             await self.trigger(self._dic_name_obj[event.__name__])
             return
         self.loop.call_soon_threadsafe(lambda x: self.loop.create_task(self._queue.put(x)), event)
