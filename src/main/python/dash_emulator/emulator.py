@@ -4,7 +4,8 @@ from typing import Optional, Dict
 
 import requests
 
-from dash_emulator import arguments, mpd, config, logger, abr, monitor, events, managers
+from dash_emulator import managers
+from dash_emulator import logger, arguments, events, abr, mpd, monitor, config
 
 log = logger.getLogger(__name__)
 

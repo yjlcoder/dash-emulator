@@ -5,7 +5,7 @@ from typing import Optional
 import aiohttp
 import matplotlib.pyplot as plt
 
-from dash_emulator import events, monitor, mpd, config, logger, abr
+from dash_emulator import logger, events, abr, mpd, monitor, config
 
 log = logger.getLogger(__name__)
 

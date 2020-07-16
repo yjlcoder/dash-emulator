@@ -1,6 +1,7 @@
 from typing import Optional
 
-from dash_emulator import monitor, config, mpd, logger, managers
+from dash_emulator import managers
+from dash_emulator import logger, mpd, monitor, config
 
 log = logger.getLogger(__name__)
 

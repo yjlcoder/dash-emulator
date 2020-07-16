@@ -1,6 +1,6 @@
 import asyncio
 
-from dash_emulator import config, logger, events, managers
+from dash_emulator import logger, events, config
 
 log = logger.getLogger(__name__)
 
