@@ -1,3 +1,4 @@
+import sys
 import argparse
 import re
 import asyncio
@@ -38,6 +39,11 @@ def validate_args(args: Dict[str, Union[int, str, None]]) -> bool:
 
 
 if __name__ == '__main__':
+    try:
+        assert sys.version_info.major >= 3 and sys.version_info.minor >= 3
+    except AssertionError:
+        print("Python 3.3+ is required.")
+        exit(-1)
     logger.config()
     parser = create_parser()
     args = parser.parse_args()
