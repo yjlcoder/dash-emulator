@@ -62,7 +62,7 @@ class Emulator():
         self.segment_content_length = 0  # type: int
 
     async def start(self):
-        # Init the event bridge
+        # Init the event bridge as a new thread
         event_thread = events.EventBridge()
         event_thread.start()
 

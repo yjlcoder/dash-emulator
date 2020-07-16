@@ -1,8 +1,8 @@
 import sys
 import argparse
-import re
 import asyncio
-
+import re
+import pathlib
 from typing import Dict, Union
 
 from dash_emulator import logger, arguments, emulator
@@ -15,6 +15,9 @@ def create_parser():
     # Add arguments here
 
     parser.add_argument("--proxy", type=str)
+    parser.add_argument("--output", type=str, required=False, default=None,
+                        help="Path to output folder")
+    parser.add_argument("--plot", required=False, default=False, action='store_true')
     parser.add_argument(arguments.PLAYER_TARGET, type=str, help="Target MPD file link")
     return parser
 
@@ -35,6 +38,11 @@ def validate_args(args: Dict[str, Union[int, str, None]]) -> bool:
     # Validate proxy
     # TODO
 
+    # Validate Output
+    if args["output"] is not None:
+        path = pathlib.Path(args['output'])
+        path.mkdir(parents=True, exist_ok=True)
+
     return True
 
 
@@ -48,7 +56,7 @@ if __name__ == '__main__':
     parser = create_parser()
     args = parser.parse_args()
 
-    args = args.__dict__
+    args = vars(args)
 
     validated = validate_args(args)
 
@@ -65,4 +73,3 @@ if __name__ == '__main__':
         # Lower than Python 3.7
         loop = asyncio.get_event_loop()
         loop.run_until_complete(emulator.start())
-

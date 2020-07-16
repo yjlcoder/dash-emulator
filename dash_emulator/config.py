@@ -36,3 +36,6 @@ class Config(object):
 
         # Chunk size
         self.chunk_size = 40960
+
+        # User input args
+        self.args = args
