@@ -25,8 +25,10 @@ class SpeedMonitor(object):
             self.downloaded = 0
             self.downloaded_before = 0
 
+            self.over = False
+
     async def calculate_speed(self):
-        while True:
+        while not self.over:
             downloaded = self.downloaded
             await asyncio.sleep(0.3)
             await self.feed(self.downloaded - downloaded, 0.3)

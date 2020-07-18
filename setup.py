@@ -42,7 +42,7 @@ if __name__ == '__main__':
         project_urls = {},
 
         scripts = [],
-        packages = ['dash_emulator'],
+        packages = ['src/main/python/dash_emulator'],
         namespace_packages = [],
         py_modules = [],
         entry_points = {},

@@ -1,4 +1,5 @@
 import asyncio
+import signal
 import time
 from typing import Optional
 
@@ -82,7 +83,7 @@ class PlayManager(object):
         while True:
             if self.buffer_level > 0:
                 log.info("Buffer level sufficient: %.1f seconds" % (self.buffer_level / 1000))
-                await asyncio.sleep(self.buffer_level / 1000)
+                await asyncio.sleep(min(1, self.buffer_level / 1000))
             else:
                 break
         if self.mpd.mediaPresentationDuration <= self.current_time:
@@ -174,6 +175,22 @@ class PlayManager(object):
         events.EventBridge().add_listener(events.Events.DownloadComplete, download_next)
         events.EventBridge().add_listener(events.Events.DownloadComplete, check_canplay)
 
+        async def ctrl_c_handler():
+            print("Fast-forward to the end")
+            # Change current time to 0.5 seconds before the end
+            self.current_time = monitor.BufferMonitor().buffer - 0.5
+            asyncio.get_event_loop().remove_signal_handler(signal.SIGINT)
+
+        async def download_end():
+            monitor.SpeedMonitor().over = True
+            await asyncio.sleep(0.5)
+
+            loop = asyncio.get_event_loop()
+            loop.add_signal_handler(signal.SIGINT, lambda: asyncio.create_task(ctrl_c_handler()))
+            print("You can press Ctrl-C to fastforward to the end of playback")
+
+        events.EventBridge().add_listener(events.Events.DownloadEnd, download_end)
+
         async def plot():
             # Durations of segments
             durations = DownloadManager().representation.durations
@@ -197,8 +214,13 @@ class PlayManager(object):
             fig.savefig("figures/segment-download-bandwidth.pdf")
             plt.close()
 
+        async def exit_program():
+            print("Prepare to exit the program")
+            events.EventBridge().over = True
+
         if self.cfg.args['plot']:
             events.EventBridge().add_listener(events.Events.End, plot)
+        events.EventBridge().add_listener(events.Events.End, exit_program)
 
     def save_statistical_data(self):
         # Bandwidth for each segment

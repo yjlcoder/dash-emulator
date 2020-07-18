@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import time
 from typing import Optional, Dict
 
@@ -65,7 +66,8 @@ class Emulator():
     async def start(self):
         # Init the event bridge as a new thread
         event_thread = events.EventBridge()
-        event_thread.start()
+        await event_thread.init_queue()
+        # event_thread.start()
 
         target: str = self.args[arguments.PLAYER_TARGET]  # MPD file link
         mpd_content: str = requests.get(target).text
@@ -83,3 +85,4 @@ class Emulator():
         self.abr_controller.init(self.mpd, monitor.SpeedMonitor(), self.config)
 
         await events.EventBridge().trigger(events.Events.MPDParseComplete)
+        await event_thread.listen()

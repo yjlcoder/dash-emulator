@@ -29,34 +29,64 @@ class Event(object):
 
 class Events(object):
     class DownloadEnd(Event):
+        """
+        Event triggered when downloading has end, but the playback is not over
+        """
         pass
 
     class MPDParseComplete(Event):
+        """
+        Event triggered when MPD file get parsed
+        """
         pass
 
     class CanPlay(Event):
+        """
+        Event triggered when the buffer level >= minBufferLevel indicated in MPD file
+        """
         pass
 
     class Stall(Event):
+        """
+        Event triggered when the player is waiting for a new segment
+        """
         pass
 
     class DownloadComplete(Event):
+        """
+        Event triggered when a segment is downloaded completely
+        """
         pass
 
     class InitializationDownloadComplete(Event):
+        """
+        Event triggered when the init file is downloaded completely
+        For each stream, the init file is required to download before the segment file
+        To get a playable segment, concatenate init file and the segment file (normally m4s)
+        `cat stream0-init.mp4 stream0-segment3.m4s > stream0-segment4.mp4`
+        """
         pass
 
     class DownloadStart(Event):
+        """
+        Event triggered when the download starts
+        """
         pass
 
     class Play(Event):
+        """
+        Event triggered when the player starts playing
+        """
         pass
 
     class End(Event):
+        """
+        Event triggered when the playback is over
+        """
         pass
 
 
-class EventBridge(threading.Thread):
+class EventBridge():
     _instance = None
 
     def __new__(cls, *args, **kwargs):
@@ -76,8 +106,11 @@ class EventBridge(threading.Thread):
             for name, cls in available_events:
                 self._dic_name_obj[name] = cls()
 
+            # __init__ is running out of the event loop. You cannot create Queue() here.
             self._queue = None  # type: Optional[asyncio.Queue]
             self.loop = None  # type: Optional[asyncio.BaseEventLoop]
+
+            self.over = False
 
     def add_listener(self, event: Union[str, Event, Event.__class__], callback: Callable):
         if isinstance(event, str):
@@ -97,17 +130,25 @@ class EventBridge(threading.Thread):
             log.debug("Event %s is triggered." % event)
             await self.trigger(self._dic_name_obj[event.__name__])
             return
-        self.loop.call_soon_threadsafe(lambda x: self.loop.create_task(self._queue.put(x)), event)
+        # self.loop.call_soon_threadsafe(lambda x: self.loop.create_task(self._queue.put(x)), event)
+        self.loop.create_task(self._queue.put(event), name='put event')
 
     async def listen(self):
-        while True:
-            event = await self._queue.get()
-            log.debug("Event %s got triggered" % event.__class__.__name__)
+        while not self.over:
+            try:
+                event = await asyncio.wait_for(self._queue.get(), 1)
+            except asyncio.TimeoutError:
+                continue
+            log.info("Event %s got triggered" % event.__class__.__name__)
             await event.trigger()
 
-    def run(self):
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
-        self._queue = asyncio.Queue()
+    # def run(self):
+    #     self.loop = asyncio.new_event_loop()
+    #     asyncio.set_event_loop(self.loop)
+    #     self._queue = asyncio.Queue()
+    #
+    #     self.loop.run_until_complete(self.listen())
 
-        self.loop.run_until_complete(self.listen())
+    async def init_queue(self):
+        self.loop = asyncio.get_event_loop()
+        self._queue = asyncio.Queue(loop=self.loop)
