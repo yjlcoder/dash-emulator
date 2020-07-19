@@ -1,9 +1,11 @@
 import asyncio
 import csv
+import os
 import pathlib
-import shutil
+import random
 import signal
 import subprocess
+import sys
 import time
 from typing import Optional, List, Tuple
 
@@ -32,19 +34,28 @@ class PlayManager(object):
 
     def __init__(self):
         if not self.inited:
+            # Flag shows if the singleton has been initialized
             self.inited = True
 
+            # Properties for configurations
             self.cfg = None  # type: Optional[config.Config]
+
+            # MPD parsed from the target URL
             self.mpd = None  # type: Optional[mpd.MPD]
-            self.current_time = 0
-            self.start_time = 0
 
-            self.check_buffer_sufficient_task = None  # type: Optional[asyncio.Task]
-            self.update_current_time_task = None  # type: Optional[asyncio.Task]
+            # Time
+            self.playback_time = 0
+            self.playback_start_realtime = 0
 
+            # Asyncio Tasks
+            self.task_check_buffer_sufficient = None  # type: Optional[asyncio.Task]
+            self.task_update_playback_time = None  # type: Optional[asyncio.Task]
+
+            # Playback Control
             self.abr_controller = None  # type: Optional[abr.ABRController]
             self.state = PlayManager.State.READY
 
+            # The representations index of current playback
             self.current_video_representation_ind = -1
             self.current_audio_representation_ind = -1
 
@@ -81,7 +92,7 @@ class PlayManager(object):
 
     @property
     def buffer_level(self):
-        return (monitor.BufferMonitor().buffer - self.current_time) * 1000
+        return (monitor.BufferMonitor().buffer - self.playback_time) * 1000
 
     async def check_buffer_sufficient(self):
         while True:
@@ -90,7 +101,7 @@ class PlayManager(object):
                 await asyncio.sleep(min(1, self.buffer_level / 1000))
             else:
                 break
-        if self.mpd.mediaPresentationDuration <= self.current_time:
+        if self.mpd.mediaPresentationDuration <= self.playback_time:
             await events.EventBridge().trigger(events.Events.End)
         else:
             await events.EventBridge().trigger(events.Events.Stall)
@@ -98,7 +109,7 @@ class PlayManager(object):
     async def update_current_time(self):
         while True:
             await asyncio.sleep(self.cfg.update_interval)
-            self.current_time += self.cfg.update_interval
+            self.playback_time += self.cfg.update_interval
 
     def init(self, cfg, mpd):
         self.cfg = cfg  # type: config.Config
@@ -115,35 +126,35 @@ class PlayManager(object):
 
         async def play():
             log.info("Video playback started")
-            self.start_time = time.time()
+            self.playback_start_realtime = time.time()
 
             try:
-                self.update_current_time_task = asyncio.create_task(self.update_current_time())
+                self.task_update_playback_time = asyncio.create_task(self.update_current_time())
             except AttributeError:
                 loop = asyncio.get_event_loop()
-                self.update_current_time_task = loop.create_task(self.update_current_time())
+                self.task_update_playback_time = loop.create_task(self.update_current_time())
 
             try:
-                self.check_buffer_sufficient_task = asyncio.create_task(self.check_buffer_sufficient())
+                self.task_check_buffer_sufficient = asyncio.create_task(self.check_buffer_sufficient())
             except AttributeError:
                 loop = asyncio.get_event_loop()
-                self.check_buffer_sufficient_task = loop.create_task(self.check_buffer_sufficient())
+                self.task_check_buffer_sufficient = loop.create_task(self.check_buffer_sufficient())
             self.switch_state("PLAYING")
 
         events.EventBridge().add_listener(events.Events.Play, play)
 
         async def stall():
-            if self.update_current_time_task is not None:
-                self.update_current_time_task.cancel()
-            if self.check_buffer_sufficient_task is not None:
-                self.check_buffer_sufficient_task.cancel()
+            if self.task_update_playback_time is not None:
+                self.task_update_playback_time.cancel()
+            if self.task_check_buffer_sufficient is not None:
+                self.task_check_buffer_sufficient.cancel()
 
             log.debug("Stall happened")
             self.switch_state("STALLING")
             before_stall = time.time()
             while True:
                 await asyncio.sleep(self.cfg.update_interval)
-                if monitor.BufferMonitor().buffer - self.current_time > self.mpd.minBufferTime:
+                if monitor.BufferMonitor().buffer - self.playback_time > self.mpd.minBufferTime:
                     break
             log.debug("Stall ends, duration: %.3f" % (time.time() - before_stall))
             await events.EventBridge().trigger(events.Events.Play)
@@ -182,7 +193,7 @@ class PlayManager(object):
         async def ctrl_c_handler():
             print("Fast-forward to the end")
             # Change current time to 0.5 seconds before the end
-            self.current_time = monitor.BufferMonitor().buffer - 0.5
+            self.playback_time = monitor.BufferMonitor().buffer - 0.5
             asyncio.get_event_loop().remove_signal_handler(signal.SIGINT)
 
         async def download_end():
@@ -190,7 +201,10 @@ class PlayManager(object):
             await asyncio.sleep(0.5)
 
             loop = asyncio.get_event_loop()
-            loop.add_signal_handler(signal.SIGINT, lambda: asyncio.create_task(ctrl_c_handler()))
+            if sys.version_info.minor < 7:
+                loop.add_signal_handler(signal.SIGINT, lambda: asyncio.ensure_future(ctrl_c_handler()))
+            else:
+                loop.add_signal_handler(signal.SIGINT, lambda: asyncio.create_task(ctrl_c_handler()))
             print("You can press Ctrl-C to fastforward to the end of playback")
 
         events.EventBridge().add_listener(events.Events.DownloadEnd, download_end)
@@ -260,9 +274,7 @@ class PlayManager(object):
                 writer = csv.DictWriter(f, fieldnames=["index", "filename", "init_name", "avg_bandwidth", "bitrate",
                                                        "width", "height", "mime", "codec"])
                 writer.writeheader()
-                print(len(DownloadManager().download_record))
                 for (segment_name, representation), ind, bw in zip(DownloadManager().download_record, seg_inds, bws):
-                    print("RECORD")
                     record = {
                         "index": ind,
                         "filename": segment_name,
@@ -275,6 +287,29 @@ class PlayManager(object):
                         "codec": representation.codec
                     }
                     writer.writerow(record)
+
+                # Merge segments into a complete one
+                tmp_output_path = '/tmp/playback-merge-%05d' % random.randint(1, 99999)
+                os.mkdir(tmp_output_path)
+                segment_list_file = '%s/%s' % (tmp_output_path, 'segment-list.txt')
+                target_output_path = "%s/%s" % (output_path, 'playback.mp4')
+
+                for (segment_name, representation), ind, bw in zip(DownloadManager().download_record, seg_inds, bws):
+                    with open('%s/%s' % (output_path, 'merge-segment-%d.mp4' % ind), 'wb') as f:
+                        subprocess.call(['cat', "%s/%s" % (output_path, representation.init_filename),
+                                         "%s/%s" % (output_path, segment_name)], stdout=f)
+                    tmp_segment_path = '%s/segment-%d.mp4' % (tmp_output_path, ind)
+                    subprocess.call(
+                        ['ffmpeg', '-i', "%s/%s" % (output_path, 'merge-segment-%d.mp4' % ind), '-vcodec', 'libx264',
+                         '-vf', 'scale=1920:1080', tmp_segment_path], stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL)
+                    with open(segment_list_file, 'a') as f:
+                        subprocess.call(['echo', 'file %s' % tmp_segment_path], stdout=f)
+                        f.flush()
+
+            print(target_output_path)
+            subprocess.call(
+                ['ffmpeg', '-f', 'concat', '-safe', '0', '-i', segment_list_file, '-c', 'copy', target_output_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         if self.cfg.args['output'] is not None:
             events.EventBridge().add_listener(events.Events.End, output)

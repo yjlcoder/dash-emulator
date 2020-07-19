@@ -131,7 +131,7 @@ class EventBridge():
             await self.trigger(self._dic_name_obj[event.__name__])
             return
         # self.loop.call_soon_threadsafe(lambda x: self.loop.create_task(self._queue.put(x)), event)
-        self.loop.create_task(self._queue.put(event), name='put event')
+        self.loop.create_task(self._queue.put(event))
 
     async def listen(self):
         while not self.over or not self._queue.empty():
