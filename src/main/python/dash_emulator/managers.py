@@ -1,7 +1,11 @@
 import asyncio
+import csv
+import pathlib
+import shutil
 import signal
+import subprocess
 import time
-from typing import Optional
+from typing import Optional, List, Tuple
 
 import aiohttp
 import matplotlib.pyplot as plt
@@ -182,7 +186,7 @@ class PlayManager(object):
             asyncio.get_event_loop().remove_signal_handler(signal.SIGINT)
 
         async def download_end():
-            monitor.SpeedMonitor().over = True
+            await monitor.SpeedMonitor().stop()
             await asyncio.sleep(0.5)
 
             loop = asyncio.get_event_loop()
@@ -192,6 +196,10 @@ class PlayManager(object):
         events.EventBridge().add_listener(events.Events.DownloadEnd, download_end)
 
         async def plot():
+            output_folder = self.cfg.args['output'] + "/figures/" or "./figures/"
+            output_folder = pathlib.Path(output_folder).absolute()
+            output_folder.mkdir(parents=True, exist_ok=True)
+
             # Durations of segments
             durations = DownloadManager().representation.durations
             start_num = DownloadManager().representation.startNumber
@@ -200,7 +208,7 @@ class PlayManager(object):
             plt.xlabel("Segments")
             plt.ylabel("Durations (sec)")
             plt.title("Durations of each segment")
-            fig.savefig("figures/segment-durations.pdf")
+            fig.savefig(str(output_folder / "segment-durations.pdf"))
             plt.close()
 
             # Download bandwidth of each segment
@@ -211,13 +219,65 @@ class PlayManager(object):
             plt.xlabel("Segments")
             plt.ylabel("Bandwidth (bps)")
             plt.title("Bandwidth of downloading each segment")
-            fig.savefig("figures/segment-download-bandwidth.pdf")
+            fig.savefig(str(output_folder / "segment-download-bandwidth.pdf"))
             plt.close()
 
         async def exit_program():
             print("Prepare to exit the program")
             events.EventBridge().over = True
 
+        async def validate_output_path() -> None:
+            """
+            This function is used to validate the output path
+            It will create the folder if it doesn't exist
+            It will prompt a message to ask for deleting everything in the folder
+            """
+            output_path = self.cfg.args['output']
+            path = pathlib.Path(output_path)
+            if not path.exists():
+                path.mkdir(parents=True, exist_ok=True)
+            files = [i for i in path.glob("*")]
+            delete_choice = self.cfg.args['y']
+            if len(files) > 0:
+                delete_choice = delete_choice or (
+                        input("Do you want to delete files in the output folder? (y/N)") == 'y')
+            if delete_choice:
+                # shutil.rmtree(path.absolute())
+                subprocess.call(['rm', '-rf', str(path) + "/*"])
+                path.mkdir(parents=True, exist_ok=True)
+
+        async def output() -> None:
+            """
+            Generate output reports and videos
+            """
+            await validate_output_path()
+            output_path = self.cfg.args['output']
+
+            # Reports
+            seg_inds = [i for i in sorted(self._bandwidth_segmentwise.keys())]
+            bws = [self._bandwidth_segmentwise[i] for i in seg_inds]
+            with open(output_path + '/results.csv', 'w') as f:
+                writer = csv.DictWriter(f, fieldnames=["index", "filename", "init_name", "avg_bandwidth", "bitrate",
+                                                       "width", "height", "mime", "codec"])
+                writer.writeheader()
+                print(len(DownloadManager().download_record))
+                for (segment_name, representation), ind, bw in zip(DownloadManager().download_record, seg_inds, bws):
+                    print("RECORD")
+                    record = {
+                        "index": ind,
+                        "filename": segment_name,
+                        "init_name": representation.init_filename,
+                        "avg_bandwidth": bw,
+                        "bitrate": representation.bandwidth,
+                        "width": representation.width,
+                        "height": representation.height,
+                        "mime": representation.mime,
+                        "codec": representation.codec
+                    }
+                    writer.writerow(record)
+
+        if self.cfg.args['output'] is not None:
+            events.EventBridge().add_listener(events.Events.End, output)
         if self.cfg.args['plot']:
             events.EventBridge().add_listener(events.Events.End, plot)
         events.EventBridge().add_listener(events.Events.End, exit_program)
@@ -253,7 +313,15 @@ class DownloadManager(object):
 
             self.representation = None  # type: Optional[mpd.Representation]
 
-    async def download(self, url):
+            # This property records all downloaded segments and its corresponding representation
+            # Each tuple in the list represents a segment
+            # Each tuple contains 2 elements: filename of the segment, corresponding representation
+            self.download_record = []  # type: List[Tuple[str, mpd.Representation]]
+
+    async def download(self, url) -> None:
+        """
+        Download the file of url and save it if `output` shows in the args
+        """
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
                 output = self.cfg.args['output']
@@ -270,7 +338,10 @@ class DownloadManager(object):
                     if output is not None:
                         f.write(chunk)
 
-    def init(self, cfg, mpd):
+    def init(self, cfg: config.Config, mpd: mpd.MPD) -> None:
+        """
+        Init the download manager, including add callbacks to events
+        """
         self.cfg = cfg
         self.mpd = mpd
 
@@ -278,10 +349,10 @@ class DownloadManager(object):
             if self.video_ind >= len(self.representation.urls):
                 await events.EventBridge().trigger(events.Events.DownloadEnd)
                 return
+            # If the init file hasn't been downloaded for this representation, download that first
             if not self.representation.is_inited:
                 url = self.representation.initialization
 
-                task = None
                 try:
                     task = asyncio.create_task(self.download(url))
                 except AttributeError:
@@ -290,17 +361,20 @@ class DownloadManager(object):
 
                 await task
                 self.representation.is_inited = True
+                self.representation.init_filename = url.split('/')[-1]
                 await events.EventBridge().trigger(events.Events.InitializationDownloadComplete)
                 log.info("Download initialization for representation %s" % self.representation.id)
 
+            # Download the segment
             url = self.representation.urls[self.video_ind]
-
-            task = None
             try:
                 task = asyncio.create_task(self.download(url))
             except AttributeError:
                 loop = asyncio.get_event_loop()
                 task = loop.create_task(self.download(url))
+
+            # Add segment to download record
+            self.download_record.append((url.split('/')[-1], self.representation))
 
             await task
             await events.EventBridge().trigger(events.Events.DownloadComplete)

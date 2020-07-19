@@ -1,4 +1,5 @@
 import asyncio
+from typing import Optional
 
 from dash_emulator import logger, events, config
 
@@ -24,11 +25,10 @@ class SpeedMonitor(object):
 
             self.downloaded = 0
             self.downloaded_before = 0
-
-            self.over = False
+            self._calculate_speed_task = None  # type: Optional[asyncio.Task]
 
     async def calculate_speed(self):
-        while not self.over:
+        while True:
             downloaded = self.downloaded
             await asyncio.sleep(0.3)
             await self.feed(self.downloaded - downloaded, 0.3)
@@ -40,10 +40,10 @@ class SpeedMonitor(object):
 
         async def calculate_speed():
             try:
-                asyncio.create_task(self.calculate_speed())
+                self._calculate_speed_task = asyncio.create_task(self.calculate_speed())
             except AttributeError:
                 loop = asyncio.get_event_loop()
-                loop.create_task(self.calculate_speed())
+                self._calculate_speed_task = loop.create_task(self.calculate_speed())
 
         event_bridge.add_listener(events.Events.MPDParseComplete, calculate_speed)
 
@@ -52,6 +52,9 @@ class SpeedMonitor(object):
 
         event_bridge.add_listener(events.Events.DownloadComplete, download_complete)
         event_bridge.add_listener(events.Events.InitializationDownloadComplete, download_complete)
+
+    async def stop(self):
+        self._calculate_speed_task.cancel()
 
     async def feed(self, data, time):
         if self.last_speed < 0:

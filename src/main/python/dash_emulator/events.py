@@ -134,7 +134,7 @@ class EventBridge():
         self.loop.create_task(self._queue.put(event), name='put event')
 
     async def listen(self):
-        while not self.over:
+        while not self.over or not self._queue.empty():
             try:
                 event = await asyncio.wait_for(self._queue.get(), 1)
             except asyncio.TimeoutError:

@@ -30,7 +30,8 @@ class Representation(object):
 
         self.baseurl = None
 
-        self.is_inited = False
+        self.is_inited = False  # type: bool
+        self.init_filename = None  # type: Optional[str]
 
         self.parse(tree)
 
@@ -53,6 +54,10 @@ class Representation(object):
     @property
     def codec(self):
         return self._codec
+
+    @property
+    def mime(self):
+        return self._mime
 
     def parse(self, tree):
         base = urlparse(self._adapatationSet.mpd.link)
