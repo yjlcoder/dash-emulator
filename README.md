@@ -3,11 +3,17 @@
 ## Installtion
 
 ```
-python3 setup.py install
+pip3 install pybuilder
+pyb install
 ```
 
 ## Run
 
 ```
 python3 -m dash_emulator.main MPD_URL
+```
+
+## Help
+```
+python3 -m dash_emulator.main -h
 ```

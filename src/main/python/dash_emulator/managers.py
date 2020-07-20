@@ -254,7 +254,7 @@ class PlayManager(object):
             delete_choice = self.cfg.args['y']
             if len(files) > 0:
                 delete_choice = delete_choice or (
-                        input("Do you want to delete files in the output folder? (y/N)") == 'y')
+                        input("Existing files are detected in the output folder. Do you want to delete files before transcoding? (y/N)") == 'y')
             if delete_choice:
                 # shutil.rmtree(path.absolute())
                 subprocess.call(['rm', '-rf', str(path) + "/*"])
@@ -264,6 +264,7 @@ class PlayManager(object):
             """
             Generate output reports and videos
             """
+            log.info("Streaming ended. Starting transcoding.")
             await validate_output_path()
             output_path = self.cfg.args['output']
 
