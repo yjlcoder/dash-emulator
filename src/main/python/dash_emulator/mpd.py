@@ -109,6 +109,7 @@ class AdaptationSet(object):
         self.tree = tree
         self.id = None  # type: Optional[int]
         self.representations = []  # type: List[Representation]
+        self.srd_info = None
         self.mpd = mpd  # type: MPD
 
         self.parse()
@@ -116,7 +117,11 @@ class AdaptationSet(object):
     def parse(self):
         self.id = self.tree.attrib['id']
         for representation in self.tree:
-            self.representations.append(Representation(representation, self))
+            # By far, only SRD info uses the tag "SupplementalProperty"
+            if representation.tag == "SupplementalProperty":
+                self.srd_info = representation.attrib["value"]
+            else:
+                self.representations.append(Representation(representation, self))
         self.representations.sort(key=operator.attrgetter('bandwidth'))
 
 
@@ -143,7 +148,7 @@ class MPD(object):
             return dur
 
         root = ET.fromstring(self.content)
-        pattern = r"^\{([\s\S]+)\}[\s\S]+$"
+        pattern = r"^\{([\s\S]+)\}[\s\S]+$"  # namespace
         self.namespace = re.match(pattern, root.tag).group(1)
 
         # type
