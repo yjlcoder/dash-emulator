@@ -79,10 +79,10 @@ class Emulator():
 
         # Init the download manager
         download_manager = managers.DownloadManager()
-        download_manager.init(self.config, self.mpd)
+        download_manager.init(self.config)
 
         self.abr_controller = abr.ABRController()
-        self.abr_controller.init(self.mpd, monitor.SpeedMonitor(), self.config)
+        self.abr_controller.init(self.config, abr.SRDDashVideoABR())
 
         await events.EventBridge().trigger(events.Events.MPDParseComplete)
         await event_thread.listen()

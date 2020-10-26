@@ -47,11 +47,10 @@ class SpeedMonitor(object):
 
         event_bridge.add_listener(events.Events.MPDParseComplete, calculate_speed)
 
-        async def download_complete():
+        async def download_complete(*args, **kwargs):
             self.downloaded_before = self.downloaded
 
-        event_bridge.add_listener(events.Events.DownloadComplete, download_complete)
-        event_bridge.add_listener(events.Events.InitializationDownloadComplete, download_complete)
+        event_bridge.add_listener(events.Events.SegmentDownloadComplete, download_complete)
 
     async def stop(self):
         self._calculate_speed_task.cancel()
@@ -92,9 +91,12 @@ class BufferMonitor(object):
     def init(self, cfg):
         self.cfg = cfg
 
+        async def feed_segment(duration, *args, **kwargs):
+            self._buffer += duration
+            await events.EventBridge().trigger(events.Events.BufferUpdated, buffer=self._buffer)
+
+        events.EventBridge().add_listener(events.Events.SegmentDownloadComplete, feed_segment)
+
     @property
     def buffer(self):
         return self._buffer
-
-    def feed_segment(self, duration):
-        self._buffer += duration

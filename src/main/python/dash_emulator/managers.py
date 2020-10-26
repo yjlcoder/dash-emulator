@@ -7,7 +7,7 @@ import signal
 import subprocess
 import sys
 import time
-from typing import Optional, List, Tuple
+from typing import Optional, Dict
 
 import aiohttp
 import matplotlib.pyplot as plt
@@ -25,6 +25,17 @@ class PlayManager(object):
         STOPPED = 3
 
     _instance = None
+
+    class DownloadTaskSession(object):
+        session_id = 1
+
+        def __init__(self, adaptation_set, url, next_task=None, duration: float = 0):
+            self.session_id = PlayManager.DownloadTaskSession.session_id
+            PlayManager.DownloadTaskSession.session_id += 1
+            self.adaptation_set = adaptation_set  # type: mpd.AdaptationSet
+            self.url = url
+            self.next_task = next_task
+            self.duration = duration
 
     def __new__(cls, *args, **kwargs):
         if not isinstance(cls._instance, cls):
@@ -55,12 +66,17 @@ class PlayManager(object):
             self.abr_controller = None  # type: Optional[abr.ABRController]
             self.state = PlayManager.State.READY
 
-            # The representations index of current playback
-            self.current_video_representation_ind = -1
-            self.current_audio_representation_ind = -1
+            # The representations index of current playback. Key: adaptation set id, value: representation index
+            self.representation_indices = dict()  # type: Dict[str, int]
 
             # Statistical_data
             self._bandwidth_segmentwise = {}
+
+            # Download task sessions
+            self.download_task_sessions = dict()  # type: Dict[str, PlayManager.DownloadTaskSession]
+
+            # Current downloading segment index
+            self.segment_index = 0
 
     def switch_state(self, state):
         if state == "READY" or state == PlayManager.State.READY:
@@ -111,9 +127,36 @@ class PlayManager(object):
             await asyncio.sleep(self.cfg.update_interval)
             self.playback_time += self.cfg.update_interval
 
-    def init(self, cfg, mpd):
+    def clear_download_task_sessions(self):
+        self.download_task_sessions.clear()
+
+    def create_session_urls(self):
+        """
+        Create download_task_sessions for current segment_index
+        :return:
+        """
+        for adaptation_set in self.mpd.adaptationSets.values():
+            representation_index = self.representation_indices[adaptation_set.id]
+            representation = adaptation_set.representations[representation_index]
+            segment_number = self.segment_index + representation.startNumber
+            segment_download_session = PlayManager.DownloadTaskSession(adaptation_set,
+                                                                       representation.urls[segment_number], None,
+                                                                       representation.durations[segment_number])
+            if not representation.is_inited:
+                init_download_session = PlayManager.DownloadTaskSession(adaptation_set,
+                                                                        representation.initialization_url,
+                                                                        segment_download_session, 0)
+                representation.is_inited = True
+                self.download_task_sessions[adaptation_set.id] = init_download_session
+            else:
+                self.download_task_sessions[adaptation_set.id] = segment_download_session
+
+    def init(self, cfg, mpd: mpd.MPD):
         self.cfg = cfg  # type: config.Config
         self.mpd = mpd
+
+        for adaptation_set in mpd.adaptationSets.values():
+            self.representation_indices[adaptation_set.id] = -1  # Init the representation of each adaptation set to -1
 
         self.abr_controller = abr.ABRController()
 
@@ -162,33 +205,47 @@ class PlayManager(object):
         events.EventBridge().add_listener(events.Events.Stall, stall)
 
         async def download_start():
-            self.current_video_representation_ind = self.abr_controller.choose("video")
-            DownloadManager().representation = self.mpd.videoAdaptationSet.representations[
-                self.current_video_representation_ind]
-            DownloadManager().video_ind = DownloadManager().representation.startNumber
-            await events.EventBridge().trigger(events.Events.DownloadStart)
+            # Start downloading all adaptation sets
+            self.representation_indices = self.abr_controller.calculate_next_segment(monitor.SpeedMonitor().get_speed(),
+                                                                                     self.segment_index,
+                                                                                     self.representation_indices,
+                                                                                     self.mpd.adaptationSets)
+            self.create_session_urls()
+
+            for adaptation_set_id, session in self.download_task_sessions.items():
+                await events.EventBridge().trigger(events.Events.DownloadStart, session=session)
 
         events.EventBridge().add_listener(events.Events.MPDParseComplete, download_start)
 
-        async def download_next():
-            # Save some statistical data
-            self.save_statistical_data()
+        async def download_next(session: PlayManager.DownloadTaskSession, *args, **kwargs):
+            if session.next_task is None:
+                del self.download_task_sessions[session.adaptation_set.id]
+            else:
+                self.download_task_sessions[session.adaptation_set.id] = session.next_task
+                await events.EventBridge().trigger(events.Events.DownloadStart, session=session.next_task)
+                return
+            if len(self.download_task_sessions) == 0:
+                await events.EventBridge().trigger(events.Events.SegmentDownloadComplete, segment_index=self.segment_index, duration=session.duration)
+                self.segment_index += 1
+                self.representation_indices = self.abr_controller.calculate_next_segment(
+                    monitor.SpeedMonitor().get_speed(),
+                    self.segment_index,
+                    self.representation_indices,
+                    self.mpd.adaptationSets)
+                try:
+                    self.create_session_urls()
+                except IndexError as e:
+                    await events.EventBridge().trigger(events.Events.DownloadEnd)
+                else:
+                    for adaptation_set_id, session in self.download_task_sessions.items():
+                        await events.EventBridge().trigger(events.Events.DownloadStart, session=session)
 
-            monitor.BufferMonitor().feed_segment(
-                DownloadManager().representation.durations[DownloadManager().video_ind])
-            log.info("Current Buffer Level: %.3f" % self.buffer_level)
-            self.current_video_representation_ind = self.abr_controller.choose('video')
-            DownloadManager().representation = self.mpd.videoAdaptationSet.representations[
-                self.current_video_representation_ind]
-            DownloadManager().video_ind += 1
-            await events.EventBridge().trigger(events.Events.DownloadStart)
-
-        async def check_canplay():
+        async def check_canplay(*args, **kwargs):
             if self.ready and self.buffer_level > self.mpd.minBufferTime:
                 await events.EventBridge().trigger(events.Events.CanPlay)
 
         events.EventBridge().add_listener(events.Events.DownloadComplete, download_next)
-        events.EventBridge().add_listener(events.Events.DownloadComplete, check_canplay)
+        events.EventBridge().add_listener(events.Events.BufferUpdated, check_canplay)
 
         async def ctrl_c_handler():
             print("Fast-forward to the end")
@@ -208,6 +265,9 @@ class PlayManager(object):
             print("You can press Ctrl-C to fastforward to the end of playback")
 
         events.EventBridge().add_listener(events.Events.DownloadEnd, download_end)
+
+        async def buffer_updated(buffer, *args, **kwargs):
+            log.info("Current Buffer Level: %.3f" % self.buffer_level)
 
         async def plot():
             output_folder = self.cfg.args['output'] + "/figures/" or "./figures/"
@@ -309,19 +369,14 @@ class PlayManager(object):
 
             print(target_output_path)
             subprocess.call(
-                ['ffmpeg', '-f', 'concat', '-safe', '0', '-i', segment_list_file, '-c', 'copy', target_output_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                ['ffmpeg', '-f', 'concat', '-safe', '0', '-i', segment_list_file, '-c', 'copy', target_output_path],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         if self.cfg.args['output'] is not None:
             events.EventBridge().add_listener(events.Events.End, output)
         if self.cfg.args['plot']:
             events.EventBridge().add_listener(events.Events.End, plot)
         events.EventBridge().add_listener(events.Events.End, exit_program)
-
-    def save_statistical_data(self):
-        # Bandwidth for each segment
-        video_ind = DownloadManager().video_ind
-        speed = monitor.SpeedMonitor().get_speed()
-        self._bandwidth_segmentwise[video_ind] = speed
 
 
 class DownloadManager(object):
@@ -338,20 +393,6 @@ class DownloadManager(object):
             self.inited = True
 
             self.cfg = None  # type: Optional[config.Config]
-            self.mpd = None  # type: Optional[mpd.MPD]
-
-            self.video_ind = None
-            self.audio_ind = None
-
-            self.abr_controller = None
-            self.segment_length = None
-
-            self.representation = None  # type: Optional[mpd.Representation]
-
-            # This property records all downloaded segments and its corresponding representation
-            # Each tuple in the list represents a segment
-            # Each tuple contains 2 elements: filename of the segment, corresponding representation
-            self.download_record = []  # type: List[Tuple[str, mpd.Representation]]
 
     async def download(self, url) -> None:
         """
@@ -373,47 +414,46 @@ class DownloadManager(object):
                     if output is not None:
                         f.write(chunk)
 
-    def init(self, cfg: config.Config, mpd: mpd.MPD) -> None:
+    def init(self, cfg: config.Config) -> None:
         """
         Init the download manager, including add callbacks to events
         """
         self.cfg = cfg
-        self.mpd = mpd
 
-        async def start_download():
-            if self.video_ind >= len(self.representation.urls):
-                await events.EventBridge().trigger(events.Events.DownloadEnd)
-                return
+        async def start_download(session: PlayManager.DownloadTaskSession):
+            # if self.segment_index >= self.segment_num:
+            #     await events.EventBridge().trigger(events.Events.DownloadEnd)
+            #     return
+
             # If the init file hasn't been downloaded for this representation, download that first
-            if not self.representation.is_inited:
-                url = self.representation.initialization
 
-                try:
-                    task = asyncio.create_task(self.download(url))
-                except AttributeError:
-                    loop = asyncio.get_event_loop()
-                    task = loop.create_task(self.download(url))
+            # if not self.representation.is_inited:
+            #     url = self.representation.initialization
+            #
+            #     try:
+            #         task = asyncio.create_task(self.download(url))
+            #     except AttributeError:
+            #         loop = asyncio.get_event_loop()
+            #         task = loop.create_task(self.download(url))
+            #
+            #     await task
+            #     self.representation.is_inited = True
+            #     self.representation.init_filename = url.split('/')[-1]
+            #     await events.EventBridge().trigger(events.Events.InitializationDownloadComplete)
+            #     log.info("Download initialization for representation %s" % self.representation.id)
 
-                await task
-                self.representation.is_inited = True
-                self.representation.init_filename = url.split('/')[-1]
-                await events.EventBridge().trigger(events.Events.InitializationDownloadComplete)
-                log.info("Download initialization for representation %s" % self.representation.id)
+            url = session.url
+
+            assert url is not None
 
             # Download the segment
-            url = self.representation.urls[self.video_ind]
             try:
                 task = asyncio.create_task(self.download(url))
             except AttributeError:
                 loop = asyncio.get_event_loop()
                 task = loop.create_task(self.download(url))
 
-            # Add segment to download record
-            self.download_record.append((url.split('/')[-1], self.representation))
-
             await task
-            await events.EventBridge().trigger(events.Events.DownloadComplete)
-            log.info("Download one segment: representation %s (%d bps), segment %d" % (
-                self.representation.id, self.representation.bandwidth, self.video_ind))
+            await events.EventBridge().trigger(events.Events.DownloadComplete, session=session)
 
         events.EventBridge().add_listener(events.Events.DownloadStart, start_download)

@@ -10,21 +10,21 @@ log = logger.getLogger(__name__)
 
 class Event(object):
     @staticmethod
-    async def trigger():
-        await EventBridge().trigger(__class__)
+    async def trigger(*args, **kwargs):
+        await EventBridge().trigger(__class__, *args, **kwargs)
 
     def __init__(self):
         self.callbacks = []  # type: List[Callable]
 
-    async def trigger(self):
+    async def trigger(self, *args, **kwargs):
         for callback in self.callbacks:
             try:
                 # Python 3.7
-                asyncio.create_task(callback())
+                asyncio.create_task(callback(*args, **kwargs))
             except AttributeError:
                 # Lower than Python 3.7
                 loop = asyncio.get_event_loop()
-                loop.create_task(callback())
+                loop.create_task(callback(*args, **kwargs))
 
 
 class Events(object):
@@ -58,6 +58,11 @@ class Events(object):
         """
         pass
 
+    class SegmentDownloadComplete(Event):
+        """
+        Event triggered when all the adaptation sets for a segment are downloaded
+        """
+
     class InitializationDownloadComplete(Event):
         """
         Event triggered when the init file is downloaded completely
@@ -83,6 +88,9 @@ class Events(object):
         """
         Event triggered when the playback is over
         """
+        pass
+
+    class BufferUpdated(Event):
         pass
 
 
@@ -121,26 +129,28 @@ class EventBridge():
             return
         event.callbacks.append(callback)
 
-    async def trigger(self, event: Union[str, Event, Event.__class__]):
+    async def trigger(self, event: Union[str, Event, Event.__class__], *args, **kwargs):
         if isinstance(event, str):
             log.debug("Event %s is triggered." % str(type(event)))
-            await self.trigger(self._dic_name_obj[event])
+            await self.trigger(self._dic_name_obj[event], *args, **kwargs)
             return
         if inspect.isclass(event) and issubclass(event, Event):
             log.debug("Event %s is triggered." % event)
-            await self.trigger(self._dic_name_obj[event.__name__])
+            await self.trigger(self._dic_name_obj[event.__name__], *args, **kwargs)
             return
         # self.loop.call_soon_threadsafe(lambda x: self.loop.create_task(self._queue.put(x)), event)
-        self.loop.create_task(self._queue.put(event))
+        self.loop.create_task(self._queue.put((event, args, kwargs)))
 
     async def listen(self):
         while not self.over or not self._queue.empty():
+            args = None,
+            kwargs = None
             try:
-                event = await asyncio.wait_for(self._queue.get(), 1)
+                event, args, kwargs = await asyncio.wait_for(self._queue.get(), 1)
             except asyncio.TimeoutError:
                 continue
             log.info("Event %s got triggered" % event.__class__.__name__)
-            await event.trigger()
+            await event.trigger(*args, **kwargs)
 
     # def run(self):
     #     self.loop = asyncio.new_event_loop()

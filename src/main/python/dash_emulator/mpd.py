@@ -2,7 +2,8 @@ import operator
 import os.path
 import re
 import xml.etree.ElementTree as ET
-from typing import List, Optional
+from enum import Enum
+from typing import List, Optional, Dict
 from urllib.parse import urlparse
 
 from dash_emulator.logger import getLogger
@@ -21,9 +22,9 @@ class Representation(object):
 
         self._adapatationSet = adapatationSet  # type: AdaptationSet
 
-        self.initialization = None
+        self.initialization_url = None  # type: Optional[str]
         self.media = None
-        self.startNumber = None
+        self.startNumber = None  # type: Optional[int]
 
         self.durations = None  # type: Optional[List[float]]
         self.urls = None  # type: Optional[List[str]]
@@ -73,15 +74,15 @@ class Representation(object):
             self._height = tree.attrib['height']
 
         segmentTemplate = tree.find("{%s}SegmentTemplate" % self._adapatationSet.mpd.namespace)
-        self.initialization = segmentTemplate.attrib["initialization"].replace("$RepresentationID$",
-                                                                               str(self.id))
-        self.initialization = base._replace(path=os.path.join(basepath, self.initialization)).geturl()
+        self.initialization_url = segmentTemplate.attrib["initialization"].replace("$RepresentationID$",
+                                                                                   str(self.id))
+        self.initialization_url = base._replace(path=os.path.join(basepath, self.initialization_url)).geturl()
         self.media = segmentTemplate.attrib['media']
         self.startNumber = int(segmentTemplate.attrib['startNumber'])
         self.timescale = int(segmentTemplate.attrib['timescale'])
 
-        self.durations = [None] * self.startNumber  # type: List[int]
-        self.urls = [None] * self.startNumber
+        self.durations = [None] * self.startNumber  # type: List[Optional[int]]
+        self.urls = [None] * self.startNumber  # type: List[Optional[int]]
 
         segmentTimeline = segmentTemplate.find("{%s}SegmentTimeline" % self._adapatationSet.mpd.namespace)
 
@@ -105,20 +106,27 @@ class Representation(object):
 
 
 class AdaptationSet(object):
+    class ContentType(Enum):
+        VIDEO = 1
+        AUDIO = 2
+
     def __init__(self, tree, mpd):
         self.tree = tree
-        self.id = None  # type: Optional[int]
+        self.id = None  # type: Optional[str]
         self.representations = []  # type: List[Representation]
         self.srd_info = None
         self.mpd = mpd  # type: MPD
+        self.content_type = None  # type: Optional[AdaptationSet.ContentType]
 
         self.parse()
 
     def parse(self):
         self.id = self.tree.attrib['id']
+        self.content_type = AdaptationSet.ContentType.VIDEO if self.tree.attrib['contentType'] == 'video' \
+            else AdaptationSet.ContentType.AUDIO
         for representation in self.tree:
             # By far, only SRD info uses the tag "SupplementalProperty"
-            if representation.tag == "SupplementalProperty":
+            if "SupplementalProperty" in representation.tag:
                 self.srd_info = representation.attrib["value"]
             else:
                 self.representations.append(Representation(representation, self))
@@ -134,8 +142,7 @@ class MPD(object):
         self.namespace = None
         self.mediaPresentationDuration = None  # type: Optional[float]
         self.minBufferTime = None  # type: Optional[float]
-        self.videoAdaptationSet = None  # type: Optional[AdaptationSet]
-        self.audioAdaptationSet = None  # type: Optional[AdaptationSet]
+        self.adaptationSets = {}  # type: Dict[str, AdaptationSet]
 
         self.parse()
 
@@ -170,10 +177,10 @@ class MPD(object):
             exit(1)
 
         for adapationSet in period:
-            contentType = adapationSet.attrib["contentType"]
-            if contentType == 'video':
-                self.videoAdaptationSet = AdaptationSet(adapationSet, self)
-            elif contentType == 'audio':
-                self.audioAdaptationSet = AdaptationSet(adapationSet, self)
-            else:
-                log.error("[Parse MPD] Unsupported content type in AdaptationSet: %s" % contentType)
+            self._insert_adaptation_set(AdaptationSet(adapationSet, self))
+
+    def get_adaptation_set(self, adaptation_set_id):
+        return self.adaptationSets.get(adaptation_set_id)
+
+    def _insert_adaptation_set(self, adaptation_set: AdaptationSet):
+        self.adaptationSets[adaptation_set.id] = adaptation_set
