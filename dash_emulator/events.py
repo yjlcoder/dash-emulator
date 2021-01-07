@@ -1,6 +1,5 @@
 import asyncio
 import inspect
-import threading
 from typing import Callable, List, Union, Optional
 
 from dash_emulator import logger

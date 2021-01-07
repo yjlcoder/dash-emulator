@@ -13,6 +13,7 @@ import aiohttp
 import matplotlib.pyplot as plt
 
 from dash_emulator import logger, events, abr, mpd, monitor, config
+from dash_emulator.monitor import DownloadProgressMonitor
 
 log = logger.getLogger(__name__)
 
@@ -29,13 +30,14 @@ class PlayManager(object):
     class DownloadTaskSession(object):
         session_id = 1
 
-        def __init__(self, adaptation_set, url, next_task=None, duration: float = 0):
+        def __init__(self, adaptation_set, url, next_task=None, duration: float = 0, representation_indices=None):
             self.session_id = PlayManager.DownloadTaskSession.session_id
             PlayManager.DownloadTaskSession.session_id += 1
             self.adaptation_set = adaptation_set  # type: mpd.AdaptationSet
             self.url = url
             self.next_task = next_task
             self.duration = duration
+            self.representation_indices = representation_indices
 
     def __new__(cls, *args, **kwargs):
         if not isinstance(cls._instance, cls):
@@ -141,11 +143,14 @@ class PlayManager(object):
             segment_number = self.segment_index + representation.startNumber
             segment_download_session = PlayManager.DownloadTaskSession(adaptation_set,
                                                                        representation.urls[segment_number], None,
-                                                                       representation.durations[segment_number])
+                                                                       representation.durations[segment_number],
+                                                                       self.representation_indices
+                                                                       )
             if not representation.is_inited:
                 init_download_session = PlayManager.DownloadTaskSession(adaptation_set,
                                                                         representation.initialization_url,
-                                                                        segment_download_session, 0)
+                                                                        segment_download_session, 0,
+                                                                        self.representation_indices)
                 representation.is_inited = True
                 self.download_task_sessions[adaptation_set.id] = init_download_session
             else:
@@ -225,7 +230,8 @@ class PlayManager(object):
                 await events.EventBridge().trigger(events.Events.DownloadStart, session=session.next_task)
                 return
             if len(self.download_task_sessions) == 0:
-                await events.EventBridge().trigger(events.Events.SegmentDownloadComplete, segment_index=self.segment_index, duration=session.duration)
+                await events.EventBridge().trigger(events.Events.SegmentDownloadComplete,
+                                                   segment_index=self.segment_index, duration=session.duration)
                 self.segment_index += 1
                 self.representation_indices = self.abr_controller.calculate_next_segment(
                     monitor.SpeedMonitor().get_speed(),
@@ -394,7 +400,7 @@ class DownloadManager(object):
 
             self.cfg = None  # type: Optional[config.Config]
 
-    async def download(self, url) -> None:
+    async def download(self, url, download_progress_monitaor) -> None:
         """
         Download the file of url and save it if `output` shows in the args
         """
@@ -403,7 +409,7 @@ class DownloadManager(object):
                 output = self.cfg.args['output']
                 if output is not None:
                     f = open(output + '/' + url.split('/')[-1], 'wb')
-                self.segment_length = resp.headers["Content-Length"]
+                download_progress_monitaor.segment_length = resp.headers["Content-Length"]
                 while True:
                     chunk = await resp.content.read(self.cfg.chunk_size)
                     if not chunk:
@@ -411,6 +417,7 @@ class DownloadManager(object):
                             f.close()
                         break
                     monitor.SpeedMonitor().downloaded += (len(chunk) * 8)
+                    download_progress_monitaor.downloaded += len(chunk)
                     if output is not None:
                         f.write(chunk)
 
@@ -446,14 +453,28 @@ class DownloadManager(object):
 
             assert url is not None
 
+            download_progress_monitor = DownloadProgressMonitor(self.cfg, session)
+
             # Download the segment
             try:
-                task = asyncio.create_task(self.download(url))
+                task = asyncio.create_task(self.download(url, download_progress_monitor))
             except AttributeError:
                 loop = asyncio.get_event_loop()
-                task = loop.create_task(self.download(url))
+                task = loop.create_task(self.download(url, download_progress_monitor))
 
-            await task
+            download_progress_monitor.task = task
+
+            try:
+                monitor_task = asyncio.create_task(download_progress_monitor.start())  # type: asyncio.Task
+            except AttributeError:
+                loop = asyncio.get_event_loop()
+                monitor_task = loop.create_task(download_progress_monitor.start())
+
+            try:
+                await task
+            except asyncio.CancelledError:
+                print("Partial Received")
+            monitor_task.cancel()
             await events.EventBridge().trigger(events.Events.DownloadComplete, session=session)
 
         events.EventBridge().add_listener(events.Events.DownloadStart, start_download)

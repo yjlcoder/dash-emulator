@@ -1,4 +1,5 @@
 import asyncio
+import time
 from typing import Optional
 
 from dash_emulator import logger, events, config
@@ -100,3 +101,46 @@ class BufferMonitor(object):
     @property
     def buffer(self):
         return self._buffer
+
+
+class DownloadProgressMonitor(object):
+    def __init__(self, cfg, session):
+        self.segment_length = 0
+        self.task = None  # type: asyncio.Task
+        self.config = cfg
+        self.downloaded = 0
+        self.session = session
+
+    async def start(self):
+        """
+        In MPEG-DASH, the player cannot download the segment completely, because of the bandwidth fluctuation
+        :return: a coroutine object
+        """
+        bandwidth = SpeedMonitor().get_speed()
+        length = self.segment_length
+        timeout = length * 8 / bandwidth
+        start_time = time.time()
+
+        await asyncio.sleep(0.2)
+        self.task.cancel()
+
+        # while True:
+        #     print("Downlaod task: %s, %d BETA Algorithm" % (self.task.get_name(), time.time()))
+        #     await asyncio.sleep(0.1)
+            # if time.time() - start_time > timeout * self.config.timeout_max_ratio:
+            #     self.set_to_lowest_quaity = True
+            #     self.task.cancel()
+            #
+            # downloaded = self.data_downloaded - self.data_downloaded_before_this_segment
+            #
+            # # f_i < f_i^{min}
+            # if downloaded < self.config.min_frame_chunk_ratio * self.segment_content_length:
+            #     # TODO
+            #     pass
+            # else:
+            #     # f_i < f_i^{VQ}
+            #     if downloaded < self.config.vq_threshold_size_ratio * self.segment_content_length:
+            #         # TODO
+            #         pass
+            #
+            # await asyncio.sleep(0.05)
