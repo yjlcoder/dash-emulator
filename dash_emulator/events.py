@@ -77,6 +77,12 @@ class Events(object):
         """
         pass
 
+    class RedoTileAtLowest(Event):
+        """
+        Event triggered when a tile needs to be re-requested at the lowest quality
+        """
+        pass
+
     class Play(Event):
         """
         Event triggered when the player starts playing
@@ -106,7 +112,8 @@ class EventBridge():
         if not self.inited:
             super().__init__()
             self.inited = True
-            available_events = inspect.getmembers(Events, lambda x: inspect.isclass(x) and issubclass(x, Event))
+            available_events = inspect.getmembers(
+                Events, lambda x: inspect.isclass(x) and issubclass(x, Event))
 
             self._dic_name_obj = {}
 
