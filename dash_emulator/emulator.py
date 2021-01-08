@@ -46,7 +46,7 @@ class Emulator():
 
         # Init the download manager
         download_manager = managers.DownloadManager()
-        download_manager.init(self.config)
+        download_manager.init(self.config, len(self.mpd.adaptationSets))
 
         self.abr_controller = abr.ABRController()
         self.abr_controller.init(self.config, abr.SRDDashVideoABR())
