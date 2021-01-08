@@ -7,6 +7,7 @@ import signal
 import subprocess
 import sys
 import time
+import logging
 from typing import Optional, Dict
 
 import aiohttp
@@ -30,7 +31,7 @@ class PlayManager(object):
     class DownloadTaskSession(object):
         session_id = 1
 
-        def __init__(self, adaptation_set, url, next_task=None, duration: float = 0, representation_indices=None):
+        def __init__(self, adaptation_set, url, next_task=None, duration: float = 0, representation_indices=None, segment_index: int = -1):
             self.session_id = PlayManager.DownloadTaskSession.session_id
             PlayManager.DownloadTaskSession.session_id += 1
             self.adaptation_set = adaptation_set  # type: mpd.AdaptationSet
@@ -38,6 +39,7 @@ class PlayManager(object):
             self.next_task = next_task
             self.duration = duration
             self.representation_indices = representation_indices
+            self.segment_index = segment_index
 
     def __new__(cls, *args, **kwargs):
         if not isinstance(cls._instance, cls):
@@ -61,8 +63,10 @@ class PlayManager(object):
             self.playback_start_realtime = 0
 
             # Asyncio Tasks
-            self.task_check_buffer_sufficient = None  # type: Optional[asyncio.Task]
-            self.task_update_playback_time = None  # type: Optional[asyncio.Task]
+            # type: Optional[asyncio.Task]
+            self.task_check_buffer_sufficient = None
+            # type: Optional[asyncio.Task]
+            self.task_update_playback_time = None
 
             # Playback Control
             self.abr_controller = None  # type: Optional[abr.ABRController]
@@ -75,7 +79,8 @@ class PlayManager(object):
             self._bandwidth_segmentwise = {}
 
             # Download task sessions
-            self.download_task_sessions = dict()  # type: Dict[str, PlayManager.DownloadTaskSession]
+            # type: Dict[str, PlayManager.DownloadTaskSession]
+            self.download_task_sessions = dict()
 
             # Current downloading segment index
             self.segment_index = 0
@@ -115,7 +120,8 @@ class PlayManager(object):
     async def check_buffer_sufficient(self):
         while True:
             if self.buffer_level > 0:
-                log.info("Buffer level sufficient: %.1f seconds" % (self.buffer_level / 1000))
+                log.info("Buffer level sufficient: %.1f seconds" %
+                         (self.buffer_level / 1000))
                 await asyncio.sleep(min(1, self.buffer_level / 1000))
             else:
                 break
@@ -131,6 +137,32 @@ class PlayManager(object):
 
     def clear_download_task_sessions(self):
         self.download_task_sessions.clear()
+
+    def redo_session_low_quality(self, adaptation_set: mpd.AdaptationSet):
+        """
+        Re-request same segment (for one adaptation set) at lowest quality.
+        """
+
+        self.representation_indices[adaptation_set.id] = 0  # lowest quality
+        representation = adaptation_set.representations[0]
+        segment_number = self.segment_index + representation.startNumber
+        segment_download_session = PlayManager.DownloadTaskSession(adaptation_set,
+                                                                   representation.urls[segment_number],
+                                                                   None,
+                                                                   representation.durations[segment_number],
+                                                                   representation_indices=self.representation_indices,
+                                                                   segment_index=self.segment_index)
+        if not representation.is_inited:
+            init_download_session = PlayManager.DownloadTaskSession(adaptation_set,
+                                                                    representation.initialization_url,
+                                                                    segment_download_session,
+                                                                    0,
+                                                                    representation_indices=self.representation_indices,
+                                                                    segment_index=self.segment_index)
+            representation.is_inited = True
+            self.download_task_sessions[adaptation_set.id] = init_download_session
+        else:
+            self.download_task_sessions[adaptation_set.id] = segment_download_session
 
     def create_session_urls(self):
         """
@@ -161,7 +193,8 @@ class PlayManager(object):
         self.mpd = mpd
 
         for adaptation_set in mpd.adaptationSets.values():
-            self.representation_indices[adaptation_set.id] = -1  # Init the representation of each adaptation set to -1
+            # Init the representation of each adaptation set to -1
+            self.representation_indices[adaptation_set.id] = -1
 
         self.abr_controller = abr.ABRController()
 
@@ -177,16 +210,20 @@ class PlayManager(object):
             self.playback_start_realtime = time.time()
 
             try:
-                self.task_update_playback_time = asyncio.create_task(self.update_current_time())
+                self.task_update_playback_time = asyncio.create_task(
+                    self.update_current_time())
             except AttributeError:
                 loop = asyncio.get_event_loop()
-                self.task_update_playback_time = loop.create_task(self.update_current_time())
+                self.task_update_playback_time = loop.create_task(
+                    self.update_current_time())
 
             try:
-                self.task_check_buffer_sufficient = asyncio.create_task(self.check_buffer_sufficient())
+                self.task_check_buffer_sufficient = asyncio.create_task(
+                    self.check_buffer_sufficient())
             except AttributeError:
                 loop = asyncio.get_event_loop()
-                self.task_check_buffer_sufficient = loop.create_task(self.check_buffer_sufficient())
+                self.task_check_buffer_sufficient = loop.create_task(
+                    self.check_buffer_sufficient())
             self.switch_state("PLAYING")
 
         events.EventBridge().add_listener(events.Events.Play, play)
@@ -204,10 +241,23 @@ class PlayManager(object):
                 await asyncio.sleep(self.cfg.update_interval)
                 if monitor.BufferMonitor().buffer - self.playback_time > self.mpd.minBufferTime:
                     break
-            log.debug("Stall ends, duration: %.3f" % (time.time() - before_stall))
+            log.debug("Stall ends, duration: %.3f" %
+                      (time.time() - before_stall))
             await events.EventBridge().trigger(events.Events.Play)
 
         events.EventBridge().add_listener(events.Events.Stall, stall)
+
+        async def download_repeat_start(session: PlayManager.DownloadTaskSession, *args, **kwargs):
+            adaptation_set = session.adaptation_set
+            # start downloading a single adaptation set
+            log.debug(
+                f"Repeat download for adaptation_set {adaptation_set.id}")
+
+            # setting session @ lowest quality
+            self.redo_session_low_quality(adaptation_set)
+            await events.EventBridge().trigger(events.Events.DownloadStart, session=session)
+        events.EventBridge().add_listener(
+            events.Events.RedoTileAtLowest, download_repeat_start)
 
         async def download_start():
             # Start downloading all adaptation sets
@@ -265,9 +315,11 @@ class PlayManager(object):
 
             loop = asyncio.get_event_loop()
             if sys.version_info.minor < 7:
-                loop.add_signal_handler(signal.SIGINT, lambda: asyncio.ensure_future(ctrl_c_handler()))
+                loop.add_signal_handler(
+                    signal.SIGINT, lambda: asyncio.ensure_future(ctrl_c_handler()))
             else:
-                loop.add_signal_handler(signal.SIGINT, lambda: asyncio.create_task(ctrl_c_handler()))
+                loop.add_signal_handler(
+                    signal.SIGINT, lambda: asyncio.create_task(ctrl_c_handler()))
             print("You can press Ctrl-C to fastforward to the end of playback")
 
         events.EventBridge().add_listener(events.Events.DownloadEnd, download_end)
@@ -276,7 +328,8 @@ class PlayManager(object):
             log.info("Current Buffer Level: %.3f" % self.buffer_level)
 
         async def plot():
-            output_folder = self.cfg.args['output'] + "/figures/" or "./figures/"
+            output_folder = self.cfg.args['output'] + \
+                "/figures/" or "./figures/"
             output_folder = pathlib.Path(output_folder).absolute()
             output_folder.mkdir(parents=True, exist_ok=True)
 
@@ -284,7 +337,8 @@ class PlayManager(object):
             durations = DownloadManager().representation.durations
             start_num = DownloadManager().representation.startNumber
             fig = plt.figure()
-            plt.plot([i for i in range(start_num, len(durations))], durations[start_num:])
+            plt.plot([i for i in range(start_num, len(durations))],
+                     durations[start_num:])
             plt.xlabel("Segments")
             plt.ylabel("Durations (sec)")
             plt.title("Durations of each segment")
@@ -320,7 +374,7 @@ class PlayManager(object):
             delete_choice = self.cfg.args['y']
             if len(files) > 0:
                 delete_choice = delete_choice or (
-                        input("Do you want to delete files in the output folder? (y/N)") == 'y')
+                    input("Do you want to delete files in the output folder? (y/N)") == 'y')
             if delete_choice:
                 # shutil.rmtree(path.absolute())
                 subprocess.call(['rm', '-rf', str(path) + "/*"])
@@ -355,27 +409,32 @@ class PlayManager(object):
                     writer.writerow(record)
 
                 # Merge segments into a complete one
-                tmp_output_path = '/tmp/playback-merge-%05d' % random.randint(1, 99999)
+                tmp_output_path = '/tmp/playback-merge-%05d' % random.randint(
+                    1, 99999)
                 os.mkdir(tmp_output_path)
-                segment_list_file = '%s/%s' % (tmp_output_path, 'segment-list.txt')
+                segment_list_file = '%s/%s' % (tmp_output_path,
+                                               'segment-list.txt')
                 target_output_path = "%s/%s" % (output_path, 'playback.mp4')
 
                 for (segment_name, representation), ind, bw in zip(DownloadManager().download_record, seg_inds, bws):
                     with open('%s/%s' % (output_path, 'merge-segment-%d.mp4' % ind), 'wb') as f:
                         subprocess.call(['cat', "%s/%s" % (output_path, representation.init_filename),
                                          "%s/%s" % (output_path, segment_name)], stdout=f)
-                    tmp_segment_path = '%s/segment-%d.mp4' % (tmp_output_path, ind)
+                    tmp_segment_path = '%s/segment-%d.mp4' % (
+                        tmp_output_path, ind)
                     subprocess.call(
                         ['ffmpeg', '-i', "%s/%s" % (output_path, 'merge-segment-%d.mp4' % ind), '-vcodec', 'libx264',
                          '-vf', 'scale=1920:1080', tmp_segment_path], stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL)
                     with open(segment_list_file, 'a') as f:
-                        subprocess.call(['echo', 'file %s' % tmp_segment_path], stdout=f)
+                        subprocess.call(['echo', 'file %s' %
+                                         tmp_segment_path], stdout=f)
                         f.flush()
 
             print(target_output_path)
             subprocess.call(
-                ['ffmpeg', '-f', 'concat', '-safe', '0', '-i', segment_list_file, '-c', 'copy', target_output_path],
+                ['ffmpeg', '-f', 'concat', '-safe', '0', '-i',
+                    segment_list_file, '-c', 'copy', target_output_path],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         if self.cfg.args['output'] is not None:
@@ -397,19 +456,73 @@ class DownloadManager(object):
     def __init__(self):
         if not self.inited:
             self.inited = True
-
             self.cfg = None  # type: Optional[config.Config]
 
-    async def download(self, url, download_progress_monitaor) -> None:
+            self.tile_download_times = {} # type: Dict[str, List[float]]
+            self.tile_percentages_received = {} # type: Dict[str, List[float]]
+            self.segment_buffer_levels = [] # type: List[float]
+
+    async def record_buffer_level(self, *args, **kwargs):
+        print('recording buffer level')
+        buffer_level = monitor.BufferMonitor().buffer
+        self.segment_buffer_levels.append(buffer_level)
+    
+    async def dump_results(self, *args, **kwargs):
+        """
+        Dumps all playback statistics to the console. Called when playback is over.
+        """
+        print('dumping results')
+        console = logging.StreamHandler()
+        console.setLevel(level=logging.INFO)
+        formatter = logger.CsvFormatter()
+        console.setFormatter(formatter)
+
+        console.write('\n\n**Results**\n\n')
+
+        # logging 'percentage downloaded' statistics for all tile-segments
+        console.write('Percentage of bytes received for each tile:\n')
+        segment_index = 0
+        num_segments = len(self.segment_buffer_levels)
+        num_tiles = len(self.tile_download_times)
+        tile_percent_sums = num_tiles * [0.0]
+        console.write('segment_index \t ')
+        for i in range(num_tiles):
+            console.write(f'Tile #{i}\t')
+        console.write(' \t Overall\n')
+        
+        while segment_index < num_segments:
+            console.write(f'{segment_index} \t \t ')
+            sum_of_percents = 0
+            for i in range(num_tiles):
+                percentage = self.tile_percentages_received[str(i)][segment_index]
+                tile_percent_sums[i] += percentage
+                sum_of_percents += percentage
+                console.write(f'{percentage},\t')
+            # write the average
+            average = float(sum_of_percents / num_tiles)
+            console.write(f' \t \t {average}\n')
+        # finishing with overall averages
+        console.write('Average\t')
+        cum_sum = 0
+        for i in range(num_tiles):
+            average = float(tile_percent_sums[i] / num_segments)
+            cum_sum += average
+            console.write(f'{average},\t')
+        overall_average = float(cum_sum / num_tiles)
+        console.write(f'\t\t {overall_average}\n')
+
+    async def download(self, url, download_progress_monitor) -> None:
         """
         Download the file of url and save it if `output` shows in the args
         """
+        download_progress_monitor.start_time = time.time()
+
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
                 output = self.cfg.args['output']
                 if output is not None:
                     f = open(output + '/' + url.split('/')[-1], 'wb')
-                download_progress_monitaor.segment_length = resp.headers["Content-Length"]
+                download_progress_monitor.segment_length = int(resp.headers["Content-Length"])
                 while True:
                     chunk = await resp.content.read(self.cfg.chunk_size)
                     if not chunk:
@@ -417,15 +530,33 @@ class DownloadManager(object):
                             f.close()
                         break
                     monitor.SpeedMonitor().downloaded += (len(chunk) * 8)
-                    download_progress_monitaor.downloaded += len(chunk)
+                    download_progress_monitor.downloaded += len(chunk)
                     if output is not None:
                         f.write(chunk)
+                # once here, the download has finished; save data to be logged post-experiment
+                if download_progress_monitor.session.duration == 0:
+                    # true for init stream files, which we don't care about
+                    return
+                
+                adaptation_set_id = download_progress_monitor.session.adaptation_set.id
+                end_time = time.time()
+                time_to_receive_tile = end_time - download_progress_monitor.start_time
+                percent_received = float(download_progress_monitor.downloaded / download_progress_monitor.segment_length)
 
-    def init(self, cfg: config.Config) -> None:
+                # record 'time to download (s)' and 'bytes received (%)'
+                self.tile_download_times[adaptation_set_id].append(time_to_receive_tile)
+                self.tile_percentages_received[adaptation_set_id].append(percent_received)
+
+    def init(self, cfg: config.Config, num_tiles: int = 0) -> None:
         """
         Init the download manager, including add callbacks to events
         """
         self.cfg = cfg
+        # prep data structures for use later
+        for i in range(num_tiles):
+            self.tile_download_times[str(i)] = []
+            self.tile_percentages_received[str(i)] = [] 
+
 
         async def start_download(session: PlayManager.DownloadTaskSession):
             # if self.segment_index >= self.segment_num:
@@ -453,22 +584,27 @@ class DownloadManager(object):
 
             assert url is not None
 
-            download_progress_monitor = DownloadProgressMonitor(self.cfg, session)
+            download_progress_monitor = DownloadProgressMonitor(
+                self.cfg, session)
 
             # Download the segment
             try:
-                task = asyncio.create_task(self.download(url, download_progress_monitor))
+                task = asyncio.create_task(
+                    self.download(url, download_progress_monitor))
             except AttributeError:
                 loop = asyncio.get_event_loop()
-                task = loop.create_task(self.download(url, download_progress_monitor))
+                task = loop.create_task(self.download(
+                    url, download_progress_monitor))
 
             download_progress_monitor.task = task
 
             try:
-                monitor_task = asyncio.create_task(download_progress_monitor.start())  # type: asyncio.Task
+                monitor_task = asyncio.create_task(
+                    download_progress_monitor.start())  # type: asyncio.Task
             except AttributeError:
                 loop = asyncio.get_event_loop()
-                monitor_task = loop.create_task(download_progress_monitor.start())
+                monitor_task = loop.create_task(
+                    download_progress_monitor.start())
 
             try:
                 await task
@@ -478,3 +614,5 @@ class DownloadManager(object):
             await events.EventBridge().trigger(events.Events.DownloadComplete, session=session)
 
         events.EventBridge().add_listener(events.Events.DownloadStart, start_download)
+        events.EventBridge().add_listener(events.Events.SegmentDownloadComplete, self.record_buffer_level)
+        events.EventBridge().add_listener(events.Events.End, self.dump_results)
