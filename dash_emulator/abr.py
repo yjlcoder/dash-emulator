@@ -56,12 +56,14 @@ class NormalDashVideoABR(ABRAlgorithm):
                 effective_bw = left_bw * self.cfg.bandwidth_fraction
                 if adaptation_set.content_type == content_type_target:
                     content_type_target = target_switch[content_type_target]
-                    ideal_ind = self.determine_ideal_selected_index(effective_bw, adaptation_set)
+                    ideal_ind = self.determine_ideal_selected_index(
+                        effective_bw, adaptation_set)
 
                     if segment_index == 0:
                         return ideal_ind
 
-                    current_representation = adaptation_set.representations[representation_indices[adaptation_id]]
+                    current_representation = adaptation_set.representations[
+                        representation_indices[adaptation_id]]
                     ideal_representation = adaptation_set.representations[ideal_ind]
 
                     if ideal_representation.bandwidth > current_representation.bandwidth and managers.PlayManager().buffer_level < self.cfg.min_duration_for_quality_increase_ms:
@@ -70,17 +72,46 @@ class NormalDashVideoABR(ABRAlgorithm):
                         new_indices[adaptation_id] = representation_indices[adaptation_id]
                     else:
                         new_indices[adaptation_id] = ideal_ind
-                    left_bw = current_bw - adaptation_set.representations[new_indices[adaptation_id]].bandwidth
+                    left_bw = current_bw - \
+                        adaptation_set.representations[new_indices[adaptation_id]].bandwidth
         return new_indices
 
 
 class SRDDashVideoABR(ABRAlgorithm):
 
-    def calculate_next_segment(self, current_speed: int, segment_index: int, representation_indices: Dict[str, int],
+    def calculate_next_segment(self, current_bw: int, segment_index: int, representation_indices: Dict[str, int],
                                adaptation_sets: Dict[str, mpd.AdaptationSet], cfg: config.Config) -> Dict[str, int]:
         new_indices = representation_indices.copy()
-        for key, value in new_indices.items():
-            new_indices[key] = 2
+
+        if segment_index == 0:
+            current_bw = cfg.max_initial_bitrate
+        remaining_bw = current_bw
+
+        QUALITIES = {'LOW': 0, 'MED': 1, 'HIGH': 2}
+
+        fov_adaptation_set_indices = ['2', '3', '4'] # FOV and non-FOV adaptation sets are both fixed
+        nonfov_adaptation_set_indices = ['0', '1', '5', '6', '7']
+
+        # assign lowest quality to non-fov tiles
+        for i in nonfov_adaptation_set_indices:
+            new_indices[i] = 0
+            adaptation_set = adaptation_sets[i]
+            remaining_bw -= adaptation_set.representations[new_indices[i]].bandwidth
+
+        effective_bw = remaining_bw * cfg.bandwidth_fraction
+        estimated_fov_quality = effective_bw / len(fov_adaptation_set_indices)
+
+        # assign highest possible quality to remaining tiles (depending on effective bw)
+        for i in fov_adaptation_set_indices:
+            adaptation_set = adaptation_sets[i]
+            if estimated_fov_quality > adaptation_set.representations[QUALITIES['HIGH']].bandwidth:
+                new_indices[i] = QUALITIES['HIGH']
+            elif estimated_fov_quality > adaptation_set.representations[QUALITIES['MED']].bandwidth:
+                new_indices[i] = QUALITIES['MED']
+            else:
+                new_indices[i] = QUALITIES['LOW']
+            remaining_bw -= adaptation_set.representations[new_indices[i]].bandwidth
+
         return new_indices
 
 

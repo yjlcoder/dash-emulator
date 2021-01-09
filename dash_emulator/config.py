@@ -4,10 +4,10 @@ class Config(object):
         self.max_initial_bitrate = 1000000
 
         # Min Duration for quality increase (ms)
-        self.min_duration_for_quality_increase_ms= 6000
+        self.min_duration_for_quality_increase_ms = 6000
 
         # Max duration for quality decrease (ms)
-        self.max_duration_for_quality_decrease_ms= 8000
+        self.max_duration_for_quality_decrease_ms = 8000
 
         # Min duration to retrain after discard (ms)
         self.min_duration_to_retrain_after_discard_ms = 8000
@@ -22,14 +22,19 @@ class Config(object):
         # The size ratio of a segment which is for I-, P-, and B-frames.
         self.min_frame_chunk_ratio = 0.6
 
+        # ideally, we want at least 3 seconds of playback in the buffer.
+        self.min_buffer_length = 3.0
+
         # VQ threshold
         self.vq_threshold = 0.8
 
         # VQ threshold for size ratio
-        self.vq_threshold_size_ratio = self.min_frame_chunk_ratio * (self.min_frame_chunk_ratio + (1-self.min_frame_chunk_ratio) * self.vq_threshold)
+        self.vq_threshold_size_ratio = self.min_frame_chunk_ratio * \
+            (self.min_frame_chunk_ratio +
+             (1-self.min_frame_chunk_ratio) * self.vq_threshold)
 
         # Timeout max ratio
-        self.timeout_max_ratio = 2
+        self.timeout_max_ratio = 1.6
 
         # Update interval
         self.update_interval = 0.05
