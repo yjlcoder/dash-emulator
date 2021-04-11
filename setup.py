@@ -17,5 +17,6 @@ setup(name='dash-emulator',
       author_email='yang.jace.liu@linux.com',
       url='https://github.com/Yang-Jace-Liu/dash-emulator',
       packages=find_packages(),
+      scripts=["scripts/dash-emulator.py"],
       install_requires=requirements
       )
