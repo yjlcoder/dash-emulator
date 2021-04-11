@@ -3,8 +3,7 @@
 ## Installtion
 
 ```
-pip3 install pybuilder
-pyb install
+pip3 install .
 ```
 
 ## Run
