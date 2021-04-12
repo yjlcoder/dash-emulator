@@ -2,7 +2,8 @@ from abc import ABC, abstractmethod
 
 import requests
 
-from dash_emulator import mpd_parser
+from dash_emulator.models import MPD
+from dash_emulator.mpd_parser import MPDParser
 
 
 class Emulator(ABC):
@@ -12,9 +13,9 @@ class Emulator(ABC):
 
 
 class EmulatorImpl(Emulator):
-    def __init__(self):
-        pass
+    def __init__(self, mpd_parser: MPDParser):
+        self.mpd_parser = mpd_parser
 
     async def start(self, mpd_url):
         mpd_content: str = requests.get(mpd_url).text
-        mpd_obj = mpd_parser.MPD(mpd_content, mpd_url)
+        mpd: MPD = self.mpd_parser.parse(mpd_content, mpd_url)
