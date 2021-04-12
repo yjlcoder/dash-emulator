@@ -20,12 +20,17 @@ def step_impl(context):
         def __init__(self):
             self.on_download_complete_triggered = False
             self.on_bytes_downloaded_triggered = False
+            self.on_transfer_start_triggered = False
 
-        async def on_download_complete(self, size: int, url: str) -> None:
+        async def on_transfer_start(self, url) -> None:
+            print("Download Start, url: " + url)
+            self.on_transfer_start_triggered = True
+
+        async def on_transfer_end(self, size: int, url: str) -> None:
             print("Download Complete. Size: %10d" % size)
             self.on_download_complete_triggered = True
 
-        async def on_bytes_downloaded(self, length: int, url: str, position: int, size: int) -> None:
+        async def on_bytes_transferred(self, length: int, url: str, position: int, size: int) -> None:
             print("%10d, %10d/%10d" % (length, position, size))
             self.on_bytes_downloaded_triggered = True
 
@@ -62,6 +67,7 @@ def step_impl(context):
         await context.args.download_manager.close()
         assert context.args.listener.on_download_complete_triggered is True
         assert context.args.listener.on_bytes_downloaded_triggered is True
+        assert context.args.listener.on_transfer_start_triggered is True
         assert context.args.download_manager.is_busy is False
 
     asyncio.run(run())

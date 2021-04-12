@@ -7,14 +7,14 @@ import aiohttp
 
 class DownloadEventListener(ABC):
     @abstractmethod
-    async def on_bytes_downloaded(self, length: int, url: str, position: int, size: int) -> None:
+    async def on_bytes_transferred(self, length: int, url: str, position: int, size: int) -> None:
         """
         Parameters
         ----------
         length: int
-            The length downloaded since last call, in bytes
+            The length transferred since last call, in bytes
         url: str
-            The url of current download session
+            The url of current request
         position: int
             The current position of the stream, in bytes
         size: int
@@ -23,16 +23,25 @@ class DownloadEventListener(ABC):
         pass
 
     @abstractmethod
-    async def on_download_complete(self, size: int, url: str) -> None:
+    async def on_transfer_end(self, size: int, url: str) -> None:
         """
         Parameters
         ----------
         size: int
-            The size of the complete download
+            The size of the complete transmission
         url: str
-            The url of the complete download
+            The url of the complete transmission
         """
         pass
+
+    @abstractmethod
+    async def on_transfer_start(self, url) -> None:
+        """
+        Parameters
+        ----------
+        url: str
+            The url of the transmission
+        """
 
 
 class DownloadManager(ABC):
@@ -111,17 +120,19 @@ class DownloadManagerImpl(DownloadManager):
         # TODO: support write to disk
         async with self._session.get(url) as resp:
             position = 0
+            for listener in self.event_listeners:
+                await listener.on_transfer_start(url)
             while True:
                 chunk = await resp.content.read(self.chunk_size)
                 if not chunk:
                     # Download complete, call listeners
                     for listener in self.event_listeners:
-                        await listener.on_download_complete(resp.content_length, url)
+                        await listener.on_transfer_end(resp.content_length, url)
                     break
                 size = len(chunk)
                 position += size
                 for listener in self.event_listeners:
-                    await listener.on_bytes_downloaded(size, url, position, resp.content_length)
+                    await listener.on_bytes_transferred(size, url, position, resp.content_length)
         self._busy = False
 
     async def close(self) -> None:
