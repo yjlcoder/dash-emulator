@@ -3,7 +3,7 @@ from xml.etree import ElementTree
 
 from behave import *
 
-from dash_emulator.models.mpd_objects import MPD
+from dash_emulator.models import MPD
 from dash_emulator.mpd_parser import MPDParser, DefaultMPDParser
 
 use_step_matcher("re")
