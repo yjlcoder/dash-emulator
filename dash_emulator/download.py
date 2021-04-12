@@ -5,7 +5,7 @@ from typing import List, Optional
 import aiohttp
 
 
-class BytesDownloadedListener(ABC):
+class DownloadEventListener(ABC):
     @abstractmethod
     async def on_bytes_downloaded(self, length: int, url: str, position: int, size: int) -> None:
         """
@@ -22,8 +22,6 @@ class BytesDownloadedListener(ABC):
         """
         pass
 
-
-class DownloadCompleteListener(ABC):
     @abstractmethod
     async def on_download_complete(self, size: int, url: str) -> None:
         """
@@ -77,28 +75,23 @@ class DownloadManagerImpl(DownloadManager):
     log = logging.getLogger('DOwnloadManagerImpl')
 
     def __init__(self,
-                 bytes_downloaded_listeners: List[BytesDownloadedListener],
-                 complete_listeners: List[DownloadCompleteListener],
+                 event_listeners: List[DownloadEventListener],
                  write_to_disk=False,
                  chunk_size=4096
                  ):
         """
         Parameters
         ----------
-        bytes_downloaded_listeners: List[BytesDownloadedListener],
+        event_listeners: List[DownloadEventListener],
             Listeners to events of some bytes downloaded
-
-        complete_listeners: List[DownloadCompleteListener],
-            Listeners to events of the request got completely downloaded
-
+            
         write_to_disk: bool
             Should we write the downloaded bytes to the disk
 
         chunk_size: int
             How any bytes should be downloaded at once
         """
-        self.bytes_downloaded_listeners = bytes_downloaded_listeners
-        self.complete_listeners = complete_listeners
+        self.event_listeners = event_listeners
         self.write_to_disk = write_to_disk
         self.chunk_size = chunk_size
 
@@ -122,12 +115,12 @@ class DownloadManagerImpl(DownloadManager):
                 chunk = await resp.content.read(self.chunk_size)
                 if not chunk:
                     # Download complete, call listeners
-                    for listener in self.complete_listeners:
+                    for listener in self.event_listeners:
                         await listener.on_download_complete(resp.content_length, url)
                     break
                 size = len(chunk)
                 position += size
-                for listener in self.bytes_downloaded_listeners:
+                for listener in self.event_listeners:
                     await listener.on_bytes_downloaded(size, url, position, resp.content_length)
         self._busy = False
 

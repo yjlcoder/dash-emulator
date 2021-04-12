@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 from behave import *
 
-from dash_emulator.download import DownloadManagerImpl, BytesDownloadedListener, DownloadCompleteListener
+from dash_emulator.download import DownloadManagerImpl, DownloadEventListener
 
 use_step_matcher("re")
 
@@ -16,7 +16,7 @@ def step_impl(context):
     context : behave.runner.Context
     """
 
-    class ProgressListener(BytesDownloadedListener, DownloadCompleteListener):
+    class ProgressListener(DownloadEventListener):
         def __init__(self):
             self.on_download_complete_triggered = False
             self.on_bytes_downloaded_triggered = False
@@ -31,7 +31,7 @@ def step_impl(context):
 
     context.args = SimpleNamespace()
     context.args.listener = ProgressListener()
-    context.args.download_manager = DownloadManagerImpl([context.args.listener], [context.args.listener], False, 1024)
+    context.args.download_manager = DownloadManagerImpl([context.args.listener], False, 1024)
 
 
 @when("The HTTP download manager starts to download Google's Logo")
