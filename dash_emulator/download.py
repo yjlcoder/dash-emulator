@@ -72,7 +72,7 @@ class DownloadManager(ABC):
 
 
 class DownloadManagerImpl(DownloadManager):
-    log = logging.getLogger('DOwnloadManagerImpl')
+    log = logging.getLogger('DownloadManagerImpl')
 
     def __init__(self,
                  event_listeners: List[DownloadEventListener],
