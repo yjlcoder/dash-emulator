@@ -7,11 +7,12 @@ from setuptools import find_packages
 requirements = [
     "aiohttp",
     "requests",
-    "matplotlib"
+    "matplotlib",
+    "behave"
 ]
 
 setup(name='dash-emulator',
-      version='0.1',
+      version='0.2.0.dev0',
       description='A headless player to emulate the playback of MPEG-DASH streams',
       author='Yang Liu',
       author_email='yang.jace.liu@linux.com',
