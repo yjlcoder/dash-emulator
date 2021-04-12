@@ -101,6 +101,9 @@ class DownloadManagerImpl(DownloadManager):
                     await listener.on_bytes_downloaded(size, url, position, resp.content_length)
         self._busy = False
 
-    async def close(self):
+    async def close(self) -> None:
+        """
+        You can still download things after you close the session, but it is not recommended.
+        """
         if self._session is not None:
             await self._session.close()
