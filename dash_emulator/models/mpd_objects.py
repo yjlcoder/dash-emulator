@@ -96,7 +96,7 @@ class AdaptationSet(object):
 class Representation(object):
     def __init__(self, id_: int, mime_type: str,
                  codecs: str, bandwidth: int, width: int, height: int,
-                 initialization: 'Segment', segments: List['Segment']):
+                 initialization: str, segments: List['Segment']):
         self.id = id_
         """
         The id of the representation
@@ -127,9 +127,9 @@ class Representation(object):
         Height of picture
         """
 
-        self.initialization: Segment = initialization
+        self.initialization: str = initialization
         """
-        The initialization segment
+        The initialization URL
         """
 
         self.segments: List[Segment] = segments

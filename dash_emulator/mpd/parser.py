@@ -38,7 +38,7 @@ class DefaultMPDParser(MPDParser):
         """
         Remove the namespace string from XML string
         """
-        content = re.sub(' xmlns="[^"]+"', '', content, count=1)
+        content = re.sub('xmlns="[^"]+"', '', content, count=1)
         return content
 
     def parse(self, content: str, url: str) -> MPD:
@@ -96,7 +96,8 @@ class DefaultMPDParser(MPDParser):
         else:
             raise MPDParsingException("The MPD support is not complete yet")
 
-    def parse_representation_with_segment_template(self, tree: Element, base_url) -> Representation:
+    @staticmethod
+    def parse_representation_with_segment_template(tree: Element, base_url) -> Representation:
         id_ = tree.attrib['id']
         mime = tree.attrib['mimeType']
         codec = tree.attrib['codecs']

@@ -1,6 +1,6 @@
 # Dash Emulator
 
-## Installtion
+## Installation 
 
 ```
 pip3 install .

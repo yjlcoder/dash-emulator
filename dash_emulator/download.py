@@ -54,12 +54,13 @@ class DownloadManager(ABC):
         pass
 
     @abstractmethod
-    async def download(self, url):
+    async def download(self, url, save=False) -> Optional[bytes]:
         """
         Start download
 
         Parameters
         ----------
+        save
         url: str
             The URL of the source to download from
         """
@@ -111,12 +112,14 @@ class DownloadManagerImpl(DownloadManager):
     def is_busy(self) -> bool:
         return self._busy
 
-    async def download(self, url):
+    async def download(self, url, save=False) -> Optional[bytes]:
         self._busy = True
         self.log.info("Start downloading %s" % url)
 
         if self._session is None:
             self._session = aiohttp.ClientSession()
+
+        content = bytearray()
         # TODO: support write to disk
         async with self._session.get(url) as resp:
             position = 0
@@ -130,10 +133,13 @@ class DownloadManagerImpl(DownloadManager):
                         await listener.on_transfer_end(resp.content_length, url)
                     break
                 size = len(chunk)
+                if save:
+                    content.extend(chunk)
                 position += size
                 for listener in self.event_listeners:
                     await listener.on_bytes_transferred(size, url, position, resp.content_length)
         self._busy = False
+        return bytes(content) if save else None
 
     async def close(self) -> None:
         """
