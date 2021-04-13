@@ -125,7 +125,7 @@ class SchedulerImpl(Scheduler):
         self.adaptation_sets = adaptation_sets
 
     async def stop(self):
-        await self.download_manager.stop()
+        await self.download_manager.close()
         if self._task is not None:
             self._task.cancel()
 

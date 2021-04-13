@@ -8,6 +8,7 @@ from dash_emulator.bandwidth import BandwidthMeterImpl
 from dash_emulator.buffer import BufferManager, BufferManagerImpl
 from dash_emulator.config import Config
 from dash_emulator.download import DownloadManagerImpl
+from dash_emulator.event_logger import EventLogger
 from dash_emulator.models import State, MPD
 from dash_emulator.mpd import MPDProvider
 from dash_emulator.mpd.parser import DefaultMPDParser
@@ -101,7 +102,7 @@ class DASHPlayer(Player):
 
         # Playback related
         self._playback_started = False
-        self._position = 0
+        self._position = 0.0
 
     @property
     def state(self) -> State:
@@ -120,7 +121,7 @@ class DASHPlayer(Player):
         self._state = State.BUFFERING
         self.scheduler.start(adaptation_sets=self._mpd_obj.adaptation_sets)
 
-        self._main_loop_task = asyncio.create_task(self.main_loop())
+        self._main_loop_task = await self.main_loop()
 
         await self.scheduler.stop()
 
@@ -139,6 +140,7 @@ class DASHPlayer(Player):
         while True:
             now = time.time()
             interval = now - timestamp
+            timestamp = now
 
             # Update MPD object
             self._mpd_obj = self.mpd_provider.mpd
@@ -171,11 +173,12 @@ class DASHPlayer(Player):
 def build_dash_player() -> Player:
     cfg = Config
     buffer_manager = BufferManagerImpl()
+    event_logger = EventLogger()
     mpd_provider = MPDProviderImpl(DefaultMPDParser(), cfg.update_interval, DownloadManagerImpl([]))
     bandwidth_meter = BandwidthMeterImpl(cfg.max_initial_bitrate, cfg.smoothing_factor, [])
     download_manager = DownloadManagerImpl([bandwidth_meter])
     abr_controller = DashABRController(2, 4, bandwidth_meter, buffer_manager)
     scheduler = SchedulerImpl(5, cfg.update_interval, download_manager, bandwidth_meter, buffer_manager,
-                              abr_controller, [])
+                              abr_controller, [event_logger])
     return DASHPlayer(cfg.update_interval, min_rebuffer_duration=1, min_start_buffer_duration=2,
                       buffer_manager=buffer_manager, mpd_provider=mpd_provider, scheduler=scheduler)
