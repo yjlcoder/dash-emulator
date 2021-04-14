@@ -53,10 +53,28 @@ class DashABRController(ABRController):
 
     @staticmethod
     def choose_ideal_selection(adaptation_set, bw) -> int:
+        """
+        Choose the ideal bitrate selection for one adaptation_set without caring about the buffer level or any other things
+
+        Parameters
+        ----------
+        adaptation_set
+            The adaptation_set to choose
+        bw
+            The bandwidth could be allocated to this adaptation set
+        Returns
+        -------
+        id: int
+            The representation id
+        """
         representations = sorted(adaptation_set.representations.values(), key=lambda x: x.bandwidth, reverse=True)
+        last_id = -1
         for representation in representations:
+            last_id = representation.id
             if representation.bandwidth < bw:
                 return representation.id
+        # If there's no representation whose bitrate is lower than the estimate, return the lowest one
+        return last_id
 
     def update_selection(self, adaptation_sets: Dict[int, AdaptationSet]) -> Dict[int, int]:
         # Only use 70% of measured bandwidth
