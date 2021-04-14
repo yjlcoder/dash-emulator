@@ -8,7 +8,7 @@ import re
 import sys
 from typing import Dict, Union
 
-from dash_emulator.player import build_dash_player
+from dash_emulator.player_factory import build_dash_player
 
 log = logging.getLogger(__name__)
 
@@ -29,25 +29,25 @@ def create_parser():
     return arg_parser
 
 
-def validate_args(args: Dict[str, Union[int, str, None]]) -> bool:
+def validate_args(arguments: Dict[str, Union[int, str, None]]) -> bool:
     # Validate target
     # args.PLAYER_TARGET is required
-    if "target" not in args:
+    if "target" not in arguments:
         log.error("Argument \"%s\" is required" % PLAYER_TARGET)
         return False
     # HTTP or HTTPS protocol
-    results = re.match("^(http|https)://", args[PLAYER_TARGET])
+    results = re.match("^(http|https)://", arguments[PLAYER_TARGET])
     if results is None:
         log.error("Argument \"%s\" (%s) is not in the right format" % (
-            PLAYER_TARGET, args[PLAYER_TARGET]))
+            PLAYER_TARGET, arguments[PLAYER_TARGET]))
         return False
 
     # Validate proxy
     # TODO
 
     # Validate Output
-    if args["output"] is not None:
-        path = pathlib.Path(args['output'])
+    if arguments["output"] is not None:
+        path = pathlib.Path(arguments['output'])
         path.mkdir(parents=True, exist_ok=True)
 
     return True

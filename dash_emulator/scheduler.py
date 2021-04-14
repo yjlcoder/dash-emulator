@@ -10,7 +10,7 @@ from dash_emulator.download import DownloadManager
 from dash_emulator.models import AdaptationSet
 
 
-class SchedulerEventHandler(ABC):
+class SchedulerEventListener(ABC):
     @abstractmethod
     def on_segment_download_start(self, index, selections):
         pass
@@ -47,7 +47,7 @@ class SchedulerImpl(Scheduler):
                  bandwidth_meter: BandwidthMeter,
                  buffer_manager: BufferManager,
                  abr_controller: ABRController,
-                 listeners: List[SchedulerEventHandler]):
+                 listeners: List[SchedulerEventListener]):
         """
         Parameters
         ----------
