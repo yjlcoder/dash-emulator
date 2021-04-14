@@ -1,8 +1,8 @@
 import logging
 
-from dash_emulator_quic.models import State
-from dash_emulator_quic.player import PlayerEventListener
-from dash_emulator_quic.scheduler import SchedulerEventListener
+from dash_emulator.models import State
+from dash_emulator.player import PlayerEventListener
+from dash_emulator.scheduler import SchedulerEventListener
 
 
 class EventLogger(SchedulerEventListener, PlayerEventListener):

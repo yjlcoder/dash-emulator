@@ -3,10 +3,10 @@ import time
 from abc import ABC, abstractmethod
 from typing import Optional, List
 
-from dash_emulator_quic.buffer import BufferManager
-from dash_emulator_quic.models import State, MPD
-from dash_emulator_quic.mpd import MPDProvider
-from dash_emulator_quic.scheduler import Scheduler
+from dash_emulator.buffer import BufferManager
+from dash_emulator.models import State, MPD
+from dash_emulator.mpd import MPDProvider
+from dash_emulator.scheduler import Scheduler
 
 
 class PlayerEventListener(ABC):

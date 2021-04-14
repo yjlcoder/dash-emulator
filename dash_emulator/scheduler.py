@@ -96,7 +96,7 @@ class SchedulerImpl(Scheduler):
             # Download one segment from each adaptation set
             selections = self.abr_controller.update_selection(self.adaptation_sets)
             for listener in self.listeners:
-                listener.on_segment_download_start(self._index, selections)
+                await listener.on_segment_download_start(self._index, selections)
             duration = 0
             for adaptation_set_id, selection in selections.items():
                 adaptation_set = self.adaptation_sets[adaptation_set_id]
@@ -113,7 +113,7 @@ class SchedulerImpl(Scheduler):
                 await self.download_manager.download(segment.url)
                 duration = segment.duration
             for listener in self.listeners:
-                listener.on_segment_download_complete(self._index)
+                await listener.on_segment_download_complete(self._index)
             self._index += 1
             self.buffer_manager.enqueue_buffer(duration)
 

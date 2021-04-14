@@ -68,13 +68,12 @@ class DashABRController(ABRController):
             The representation id
         """
         representations = sorted(adaptation_set.representations.values(), key=lambda x: x.bandwidth, reverse=True)
-        last_id = -1
+        representation = None
         for representation in representations:
-            last_id = representation.id
             if representation.bandwidth < bw:
                 return representation.id
         # If there's no representation whose bitrate is lower than the estimate, return the lowest one
-        return last_id
+        return representation.id
 
     def update_selection(self, adaptation_sets: Dict[int, AdaptationSet]) -> Dict[int, int]:
         # Only use 70% of measured bandwidth
