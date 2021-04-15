@@ -43,6 +43,20 @@ class DownloadEventListener(ABC):
             The url of the transmission
         """
 
+    @abstractmethod
+    async def on_transfer_canceled(self, url: str, position: int, size: int) -> None:
+        """
+        Parameters
+        ----------
+        url
+            The url of the canceled transfer
+        position
+            The position when the transfer got canceled
+        size
+            The complete size of the stream
+        """
+        pass
+
 
 class DownloadManager(ABC):
     @property
@@ -161,6 +175,9 @@ class DownloadManagerImpl(DownloadManager):
                 position += size
                 for listener in self.event_listeners:
                     await listener.on_bytes_transferred(size, url, position, resp.content_length)
+            if self._stop:
+                for listener in self.event_listeners:
+                    await listener.on_transfer_canceled(url, position, size)
         self._busy = False
         return bytes(content) if save else None
 

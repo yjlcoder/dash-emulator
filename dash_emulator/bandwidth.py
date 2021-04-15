@@ -43,6 +43,7 @@ class BandwidthMeter(ABC):
 
 
 class BandwidthMeterImpl(BandwidthMeter, DownloadEventListener):
+
     def __init__(self, init_bandwidth: int, smooth_factor: float,
                  bandwidth_update_listeners: List[BandwidthUpdateListener]):
         """
@@ -82,6 +83,9 @@ class BandwidthMeterImpl(BandwidthMeter, DownloadEventListener):
 
         for listener in self.listeners:
             await listener.on_bandwidth_update(self._bw)
+
+    async def on_transfer_canceled(self, url: str, position: int, size: int) -> None:
+        return await self.on_transfer_end(position, url)
 
     @property
     def bandwidth(self) -> int:

@@ -34,6 +34,9 @@ def step_impl(context):
             print("%10d, %10d/%10d" % (length, position, size))
             self.on_bytes_downloaded_triggered = True
 
+        async def on_transfer_canceled(self, url: str, position: int, size: int) -> None:
+            print("Transfer canceled")
+
     context.args = SimpleNamespace()
     context.args.listener = ProgressListener()
     context.args.download_manager = DownloadManagerImpl([context.args.listener], False, 1024)
