@@ -70,6 +70,8 @@ if __name__ == '__main__':
         log.error("Arguments validation error, exit.")
         exit(-1)
 
+    logging.basicConfig(level=logging.INFO)
+
     player = build_dash_player()
 
     asyncio.run(player.start(args["target"]))

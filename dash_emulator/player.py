@@ -15,6 +15,10 @@ class PlayerEventListener(ABC):
     async def on_state_change(self, position: float, old_state: State, new_state: State):
         pass
 
+    @abstractmethod
+    async def on_buffer_level_change(self, buffer_level):
+        pass
+
 
 class Player(ABC):
     @property
@@ -164,6 +168,8 @@ class DASHPlayer(Player):
 
             self.buffer_manager.update_buffer(self._position)
             buffer_level = self.buffer_manager.buffer_level
+            for listener in self.listeners:
+                await listener.on_buffer_level_change(buffer_level)
 
             if self._state == State.READY:
                 if buffer_level <= 0:
