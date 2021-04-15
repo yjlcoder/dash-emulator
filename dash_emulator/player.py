@@ -123,12 +123,12 @@ class DASHPlayer(Player):
             await listener.on_state_change(self._position, old_state, new_state)
 
     async def start(self, mpd_url) -> None:
-        # If the player doesn't have an MPD object, the player waits for it
-        # Else the player doesn't wait for it
-
+        # Start services
         for service in self.services:
             asyncio.create_task(service.start())
 
+        # If the player doesn't have an MPD object, the player waits for it
+        # Else the player doesn't wait for it
         if self._mpd_obj is None:
             await self.mpd_provider.start(mpd_url)
             self._mpd_obj = self.mpd_provider.mpd
@@ -152,7 +152,7 @@ class DASHPlayer(Player):
     async def main_loop(self):
         """
         The main loop.
-        This method coordinate works between different components.
+        This method coordinate work between different components.
         """
         timestamp = 0
         while True:
