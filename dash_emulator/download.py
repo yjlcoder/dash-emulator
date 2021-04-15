@@ -67,7 +67,7 @@ class DownloadManager(ABC):
 
         Returns
         -------
-        content: Optional[bytes]
+        content: bytes, optional
             None if save is False, the content bytes otherwise.
         """
         pass
@@ -80,9 +80,13 @@ class DownloadManager(ABC):
         """
         pass
 
-    async def stop(self):
+    @abstractmethod
+    async def stop(self, url: str):
         """
-        Stop current request
+        Stop one request
+
+        url:
+            The full request URL to stop
         """
         pass
 
@@ -113,6 +117,7 @@ class DownloadManagerImpl(DownloadManager):
 
         self._busy = False
         self._session: Optional[aiohttp.ClientSession] = None
+        self._stop = False
 
     @property
     def is_busy(self) -> bool:
@@ -120,18 +125,18 @@ class DownloadManagerImpl(DownloadManager):
 
     async def download(self, url, save=False) -> Optional[bytes]:
         self._busy = True
+        self._stop = False
         self.log.info("Start downloading %s" % url)
 
         if self._session is None:
             self._session = aiohttp.ClientSession()
 
         content = bytearray()
-        # TODO: support write to disk
         async with self._session.get(url) as resp:
             position = 0
             for listener in self.event_listeners:
                 await listener.on_transfer_start(url)
-            while True:
+            while not self._stop:
                 chunk = await resp.content.read(self.chunk_size)
                 if not chunk:
                     # Download complete, call listeners
@@ -153,3 +158,6 @@ class DownloadManagerImpl(DownloadManager):
         """
         if self._session is not None:
             await self._session.close()
+
+    async def stop(self, url):
+        self._stop = True
