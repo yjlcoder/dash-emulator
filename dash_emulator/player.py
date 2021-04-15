@@ -7,6 +7,7 @@ from dash_emulator.buffer import BufferManager
 from dash_emulator.models import State, MPD
 from dash_emulator.mpd import MPDProvider
 from dash_emulator.scheduler import Scheduler
+from dash_emulator.service import AsyncService
 
 
 class PlayerEventListener(ABC):
@@ -64,7 +65,8 @@ class DASHPlayer(Player):
                  buffer_manager: BufferManager,
                  mpd_provider: MPDProvider,
                  scheduler: Scheduler,
-                 listeners: List[PlayerEventListener]):
+                 listeners: List[PlayerEventListener],
+                 services: List[AsyncService] = None):
         """
         Parameters
         ----------
@@ -93,6 +95,7 @@ class DASHPlayer(Player):
         self.scheduler = scheduler
         self.mpd_provider = mpd_provider
         self.listeners = listeners
+        self.services = services if services is not None else []
 
         # MPD related
         self._mpd_obj: Optional[MPD] = None
@@ -118,6 +121,10 @@ class DASHPlayer(Player):
     async def start(self, mpd_url) -> None:
         # If the player doesn't have an MPD object, the player waits for it
         # Else the player doesn't wait for it
+
+        for service in self.services:
+            asyncio.create_task(service.start())
+
         if self._mpd_obj is None:
             await self.mpd_provider.start(mpd_url)
             self._mpd_obj = self.mpd_provider.mpd
