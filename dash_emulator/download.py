@@ -54,15 +54,21 @@ class DownloadManager(ABC):
         pass
 
     @abstractmethod
-    async def download(self, url, save=False) -> Optional[bytes]:
+    async def download(self, url, save: bool = False) -> Optional[bytes]:
         """
         Start download
 
         Parameters
         ----------
-        save
         url: str
             The URL of the source to download from
+        save: bool
+            if save is True, this method return the bytes received. Return None otherwise.
+
+        Returns
+        -------
+        content: Optional[bytes]
+            None if save is False, the content bytes otherwise.
         """
         pass
 
