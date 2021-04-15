@@ -13,16 +13,43 @@ from dash_emulator.models import AdaptationSet
 class SchedulerEventListener(ABC):
     @abstractmethod
     def on_segment_download_start(self, index, selections):
+        """
+        Callback when one segment is started to be downloaded
+
+        Parameters
+        ----------
+        index: int
+            The index of the downloading segment
+        selections: Dict[int, int]
+            The selection of representation for each adaptation set.
+            The key is the adaptation set ID, and the value is the selected representation ID.
+        """
         pass
 
     @abstractmethod
     def on_segment_download_complete(self, index):
+        """
+        Callback when one segment is completely downloaded
+
+        Parameters
+        ----------
+        index: int
+            The index of the downloading segment
+        """
         pass
 
 
 class Scheduler(ABC):
     @abstractmethod
     def start(self, adaptation_sets: Dict[int, AdaptationSet]):
+        """
+        Start the scheduler
+
+        Parameters
+        ----------
+        adaptation_sets
+            The adaptation sets to play
+        """
         pass
 
     @abstractmethod
