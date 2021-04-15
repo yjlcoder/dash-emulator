@@ -90,6 +90,18 @@ class DownloadManager(ABC):
         """
         pass
 
+    @abstractmethod
+    def add_listener(self, listener: DownloadEventListener):
+        """
+        Dynamically add a listener
+
+        Parameters
+        ----------
+        listener
+            An instance of DownloadEventListener
+        """
+        pass
+
 
 class DownloadManagerImpl(DownloadManager):
     log = logging.getLogger('DownloadManagerImpl')
@@ -161,3 +173,7 @@ class DownloadManagerImpl(DownloadManager):
 
     async def stop(self, url):
         self._stop = True
+
+    def add_listener(self, listener: DownloadEventListener):
+        if listener not in self.event_listeners:
+            self.event_listeners.append(listener)

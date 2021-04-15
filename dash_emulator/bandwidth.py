@@ -29,6 +29,18 @@ class BandwidthMeter(ABC):
         """
         pass
 
+    @abstractmethod
+    def add_listener(self, listener: BandwidthUpdateListener):
+        """
+        Add a listener to the bandwidth meter
+
+        Parameters
+        ----------
+        listener
+            An instance of BandwidthUpdateListener
+        """
+        pass
+
 
 class BandwidthMeterImpl(BandwidthMeter, DownloadEventListener):
     def __init__(self, init_bandwidth: int, smooth_factor: float,
@@ -83,3 +95,7 @@ class BandwidthMeterImpl(BandwidthMeter, DownloadEventListener):
                        (8 * self.bytes_transferred) / (self.transmission_end_time - self.transmission_start_time) * \
                        (1 - self.smooth_factor)
         self.updated = True
+
+    def add_listener(self, listener: BandwidthUpdateListener):
+        if listener not in self.listeners:
+            self.listeners.append(listener)
