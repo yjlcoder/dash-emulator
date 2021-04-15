@@ -12,7 +12,7 @@ from dash_emulator.models import AdaptationSet
 
 class SchedulerEventListener(ABC):
     @abstractmethod
-    def on_segment_download_start(self, index, selections):
+    async def on_segment_download_start(self, index, selections):
         """
         Callback when one segment is started to be downloaded
 
@@ -27,7 +27,7 @@ class SchedulerEventListener(ABC):
         pass
 
     @abstractmethod
-    def on_segment_download_complete(self, index):
+    async def on_segment_download_complete(self, index):
         """
         Callback when one segment is completely downloaded
 
