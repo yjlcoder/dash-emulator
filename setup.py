@@ -4,6 +4,7 @@
 from setuptools import setup
 from setuptools.command.install import install as _install
 
+
 class install(_install):
     def pre_install_script(self):
         pass
@@ -18,40 +19,41 @@ class install(_install):
 
         self.post_install_script()
 
+
 if __name__ == '__main__':
     setup(
-        name = 'dash-emulator',
-        version = '1.0.dev0',
-        description = '',
-        long_description = '',
-        long_description_content_type = None,
-        classifiers = [
+        name='dash-emulator',
+        version='0.1.1.dev0',
+        description='',
+        long_description='',
+        long_description_content_type=None,
+        classifiers=[
             'Development Status :: 3 - Alpha',
             'Programming Language :: Python'
         ],
-        keywords = '',
+        keywords='',
 
-        author = '',
-        author_email = '',
-        maintainer = '',
-        maintainer_email = '',
+        author='',
+        author_email='',
+        maintainer='',
+        maintainer_email='',
 
-        license = '',
+        license='',
 
-        url = '',
-        project_urls = {},
+        url='',
+        project_urls={},
 
-        scripts = [],
-        packages = ['src/main/python/dash_emulator'],
-        namespace_packages = [],
-        py_modules = [],
-        entry_points = {},
-        data_files = [],
-        package_data = {},
-        install_requires = [],
-        dependency_links = [],
-        zip_safe = True,
-        cmdclass = {'install': install},
-        python_requires = '',
-        obsoletes = [],
+        scripts=[],
+        packages=['src/main/python/dash_emulator'],
+        namespace_packages=[],
+        py_modules=[],
+        entry_points={},
+        data_files=[],
+        package_data={},
+        install_requires=[],
+        dependency_links=[],
+        zip_safe=True,
+        cmdclass={'install': install},
+        python_requires='',
+        obsoletes=[],
     )

@@ -1,8 +1,6 @@
 import asyncio
 import csv
-import os
 import pathlib
-import random
 import signal
 import subprocess
 import sys
@@ -11,7 +9,6 @@ from typing import Optional, List, Tuple
 
 import aiohttp
 import matplotlib.pyplot as plt
-
 from dash_emulator import logger, events, abr, mpd, monitor, config
 
 log = logger.getLogger(__name__)
@@ -254,7 +251,8 @@ class PlayManager(object):
             delete_choice = self.cfg.args['y']
             if len(files) > 0:
                 delete_choice = delete_choice or (
-                        input("Existing files are detected in the output folder. Do you want to delete files before transcoding? (y/N)") == 'y')
+                        input(
+                            "Existing files are detected in the output folder. Do you want to delete files before transcoding? (y/N)") == 'y')
             if delete_choice:
                 # shutil.rmtree(path.absolute())
                 subprocess.call(['rm', '-rf', str(path) + "/*"])
@@ -264,7 +262,7 @@ class PlayManager(object):
             """
             Generate output reports and videos
             """
-            log.info("Streaming ended. Starting transcoding.")
+            log.info("Streaming ended.")
             await validate_output_path()
             output_path = self.cfg.args['output']
 
@@ -288,29 +286,7 @@ class PlayManager(object):
                         "codec": representation.codec
                     }
                     writer.writerow(record)
-
-                # Merge segments into a complete one
-                tmp_output_path = '/tmp/playback-merge-%05d' % random.randint(1, 99999)
-                os.mkdir(tmp_output_path)
-                segment_list_file = '%s/%s' % (tmp_output_path, 'segment-list.txt')
-                target_output_path = "%s/%s" % (output_path, 'playback.mp4')
-
-                for (segment_name, representation), ind, bw in zip(DownloadManager().download_record, seg_inds, bws):
-                    with open('%s/%s' % (output_path, 'merge-segment-%d.mp4' % ind), 'wb') as f:
-                        subprocess.call(['cat', "%s/%s" % (output_path, representation.init_filename),
-                                         "%s/%s" % (output_path, segment_name)], stdout=f)
-                    tmp_segment_path = '%s/segment-%d.mp4' % (tmp_output_path, ind)
-                    subprocess.call(
-                        ['ffmpeg', '-i', "%s/%s" % (output_path, 'merge-segment-%d.mp4' % ind), '-vcodec', 'libx264',
-                         '-vf', 'scale=1920:1080', tmp_segment_path], stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL)
-                    with open(segment_list_file, 'a') as f:
-                        subprocess.call(['echo', 'file %s' % tmp_segment_path], stdout=f)
-                        f.flush()
-
-            print(target_output_path)
-            subprocess.call(
-                ['ffmpeg', '-f', 'concat', '-safe', '0', '-i', segment_list_file, '-c', 'copy', target_output_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                log.info(f"Done Writing to {output_path + '/results.csv'}")
 
         if self.cfg.args['output'] is not None:
             events.EventBridge().add_listener(events.Events.End, output)
@@ -360,19 +336,12 @@ class DownloadManager(object):
         """
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
-                output = self.cfg.args['output']
-                if output is not None:
-                    f = open(output + '/' + url.split('/')[-1], 'wb')
                 self.segment_length = resp.headers["Content-Length"]
                 while True:
                     chunk = await resp.content.read(self.cfg.chunk_size)
                     if not chunk:
-                        if output is not None:
-                            f.close()
                         break
                     monitor.SpeedMonitor().downloaded += (len(chunk) * 8)
-                    if output is not None:
-                        f.write(chunk)
 
     def init(self, cfg: config.Config, mpd: mpd.MPD) -> None:
         """
