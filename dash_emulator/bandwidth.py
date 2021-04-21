@@ -1,3 +1,4 @@
+import logging
 import time
 from abc import ABC, abstractmethod
 from typing import List
@@ -43,6 +44,7 @@ class BandwidthMeter(ABC):
 
 
 class BandwidthMeterImpl(BandwidthMeter, DownloadEventListener):
+    log = logging.getLogger("BandwidthMeterImpl")
 
     def __init__(self, init_bandwidth: int, smooth_factor: float,
                  bandwidth_update_listeners: List[BandwidthUpdateListener]):
@@ -71,7 +73,7 @@ class BandwidthMeterImpl(BandwidthMeter, DownloadEventListener):
     async def on_transfer_start(self, url) -> None:
         self.transmission_start_time = time.time()
         self.bytes_transferred = 0
-        print("Transmission starts. URL: " + url)
+        self.log.info("Transmission starts. URL: " + url)
 
     async def on_bytes_transferred(self, length: int, url: str, position: int, size: int) -> None:
         self.bytes_transferred += length
