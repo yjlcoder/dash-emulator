@@ -65,7 +65,6 @@ class BandwidthMeterImpl(BandwidthMeter, DownloadEventListener):
         self.smooth_factor = smooth_factor
         self.listeners = bandwidth_update_listeners
 
-        self.updated = False
         self.bytes_transferred = 0
         self.transmission_start_time = None
         self.transmission_end_time = None
@@ -94,13 +93,9 @@ class BandwidthMeterImpl(BandwidthMeter, DownloadEventListener):
         return self._bw
 
     def update_bandwidth(self):
-        if not self.updated:
-            self._bw = 8 * self.bytes_transferred / (self.transmission_end_time - self.transmission_start_time)
-        else:
-            self._bw = self._bw * self.smooth_factor + \
-                       (8 * self.bytes_transferred) / (self.transmission_end_time - self.transmission_start_time) * \
-                       (1 - self.smooth_factor)
-        self.updated = True
+        self._bw = self._bw * self.smooth_factor + \
+                   (8 * self.bytes_transferred) / (self.transmission_end_time - self.transmission_start_time) * \
+                   (1 - self.smooth_factor)
 
     def add_listener(self, listener: BandwidthUpdateListener):
         if listener not in self.listeners:
