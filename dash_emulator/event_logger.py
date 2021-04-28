@@ -7,7 +7,7 @@ from dash_emulator.scheduler import SchedulerEventListener
 
 class EventLogger(SchedulerEventListener, PlayerEventListener):
     async def on_buffer_level_change(self, buffer_level):
-        self.log.info(f"Buffer level: {buffer_level:.3f}")
+        self.log.debug(f"Buffer level: {buffer_level:.3f}")
 
     log = logging.getLogger("EventLogger")
 
