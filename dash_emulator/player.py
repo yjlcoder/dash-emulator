@@ -181,6 +181,9 @@ class DASHPlayer(Player):
                         await self._switch_state(self._state, State.BUFFERING)
                         self._state = State.BUFFERING
             elif self._state == State.BUFFERING:
+                if self.scheduler.is_end:
+                    await self._switch_state(self._state, State.READY)
+                    self._state = State.READY
                 if not self._playback_started:
                     if buffer_level > self.min_start_buffer_duration:
                         self._playback_started = True
