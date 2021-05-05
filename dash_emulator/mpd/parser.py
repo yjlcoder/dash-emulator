@@ -27,11 +27,14 @@ class DefaultMPDParser(MPDParser):
         """
         Parse the ISO8601 time string to the number of seconds
         """
-        pattern = r"^PT(?:(\d+(?:.\d+)?)H)?(?:(\d+(?:.\d+)?)M)?(?:(\d+(?:.\d+)?)S)?$"
-        results = re.match(pattern, duration)
-        dur = [float(i) if i is not None else 0 for i in results.group(1, 2, 3)]
-        dur = 3600 * dur[0] + 60 * dur[1] + dur[2]
-        return dur
+        try:
+            pattern = r"^PT(?:(\d+(?:.\d+)?)H)?(?:(\d+(?:.\d+)?)M)?(?:(\d+(?:.\d+)?)S)?$"
+            results = re.match(pattern, duration)
+            dur = [float(i) if i is not None else 0 for i in results.group(1, 2, 3)]
+            dur = 3600 * dur[0] + 60 * dur[1] + dur[2]
+            return dur
+        except AttributeError:
+            return 0
 
     @staticmethod
     def remove_namespace_from_content(content):
