@@ -81,10 +81,10 @@ class DefaultMPDParser(MPDParser):
     def parse_adaptation_set(self, tree: Element, base_url) -> AdaptationSet:
         id_ = tree.attrib.get("id")
         content_type = tree.attrib.get("contentType")
-        frame_rate = tree.attrib.get("frameRate")
-        max_width = int(tree.attrib.get("maxWidth"))
-        max_height = int(tree.attrib.get("maxHeight"))
-        par = tree.attrib.get("par")
+        frame_rate = tree.attrib.get("frameRate", None)
+        max_width = int(tree.attrib.get("maxWidth") if tree.attrib.get("maxWidth") is not None else 0)
+        max_height = int(tree.attrib.get("maxHeight") if tree.attrib.get("maxHeight") is not None else 0)
+        par = tree.attrib.get("par", None)
 
         representations = {}
         for representation_tree in tree:
