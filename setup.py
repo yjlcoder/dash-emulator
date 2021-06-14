@@ -5,10 +5,10 @@ from distutils.core import setup
 from setuptools import find_packages
 
 requirements = [
-    "aiohttp",
-    "requests",
-    "matplotlib",
-    "behave"
+    "aiohttp",  # Async HTTP requests
+    "requests",  # Synchronous HTTP requests
+    "matplotlib",  # for plotting figures
+    "behave"  # for Behavior-Driven Development (BDD)
 ]
 
 setup(name='dash-emulator',
